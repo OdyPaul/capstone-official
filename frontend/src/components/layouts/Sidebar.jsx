@@ -61,7 +61,7 @@ const {user} = useSelector((state) => state.auth)
     <nav className={`sidebar d-flex flex-column flex-shrink-0 position-fixed ${collapsed ? 'collapsed' : ''}`}>
       <Button
         variant="light"
-        className="toggle-btn"
+        className="toggle-btn "
         onClick={toggleSidebar}
       >
         <FaChevronRight />
@@ -97,6 +97,14 @@ const {user} = useSelector((state) => state.auth)
         </div>
         {expandedMenus.vcIssue && !collapsed && (
           <>
+              <Nav.Link
+              as={NavLink}
+              to="/vc/viewVc"
+              className="sidebar-link ps-5"
+            >
+              <FaClipboardList className="me-2" />
+              <span>View Credentials</span>
+            </Nav.Link>
             <Nav.Link
               as={NavLink}
               to="/vc/issue"

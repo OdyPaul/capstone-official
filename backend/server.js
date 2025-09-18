@@ -5,7 +5,7 @@ const connectDB = require('./config/db')
 const dotenv = require('dotenv').config()
 const colors = require('colors')
 
-
+    
 connectDB()
 
 const app = express()
@@ -16,6 +16,9 @@ app.use(express.urlencoded({extended: false}))
 
 
 app.use('/api/users', require('./routes/userRoutes'))
+app.use('/api/student', require('./routes/studentRoutes'))
+app.use('/api/vc', require('./routes/vcRoutes'));
+app.use('/api/rules', require('./routes/rulesRoutes'))
 
 app.use(errorHandler)
 

@@ -11,6 +11,7 @@ import Layout from './components/layouts/Layout'
 import './App.css'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import 'bootstrap/dist/js/bootstrap.bundle.min.js'
+import ViewCredentials from './pages/vc/ViewCredentials'
 import VcIssue from './pages/vc/VcIssue'
 import VcRequest from './pages/vc/VcRequest'
 import VerifyUsers from './pages/accounts/VerifyUsers'
@@ -32,7 +33,7 @@ function App() {
           <Route path="/accounts/verify-users" element={ <Layout> <VerifyUsers /> </Layout>}/>
 
           
-
+          <Route path='/vc/viewVc' element={<Layout><ViewCredentials/></Layout>}> </Route>
           <Route path='/vc/issue' element={<Layout><VcIssue/></Layout>}> </Route>
           <Route path='/vc/request' element={<Layout><VcRequest/></Layout>}> </Route>
 
