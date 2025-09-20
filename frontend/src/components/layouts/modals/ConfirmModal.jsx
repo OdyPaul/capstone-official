@@ -1,5 +1,16 @@
-function ConfirmModal({ show, student, onClose, onViewVC, onViewTOR }) {
+import React from "react";
+
+function ConfirmModal({ show, student, vcType, onClose, onViewVC, onViewCredential }) {
   if (!show || !student) return null;
+
+  // Decide button text based on VC type
+  const credentialText =
+    vcType === "tor"
+      ? "Transcript of Records (TOR)"
+      : vcType === "degree"
+      ? "Degree Certificate"
+      : "VC (JSON)";
+      
 
   return (
     <div
@@ -13,18 +24,32 @@ function ConfirmModal({ show, student, onClose, onViewVC, onViewTOR }) {
       >
         <div className="modal-content">
           <div className="modal-header">
-            <h5 className="modal-title">
-              View Options - {student.fullName}
-            </h5>
+            <h5 className="modal-title">View Options - {student.fullName}</h5>
             <button type="button" className="btn-close" onClick={onClose}></button>
           </div>
+
           <div className="modal-body">
-            <p>Do you want to view the student’s VC (JSON) or the TOR?</p>
+            <p>
+              Which credential would you like to view?
+            </p>
           </div>
+
           <div className="modal-footer">
-            <button className="btn btn-primary" onClick={onViewVC}>View VC (JSON)</button>
-            <button className="btn btn-success" onClick={onViewTOR}>View TOR</button>
-            <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            {/* Always allow viewing VC JSON */}
+            <button className="btn btn-primary" onClick={onViewVC}>
+              View VC (JSON)
+            </button>
+
+            {/* Conditional: TOR or Degree based on vcType */}
+            {(vcType === "TOR" || vcType === "Degree") && (
+              <button className="btn btn-success" onClick={onViewCredential}>
+                View {credentialText}
+              </button>
+            )}
+
+            <button className="btn btn-secondary" onClick={onClose}>
+              Cancel
+            </button>
           </div>
         </div>
       </div>

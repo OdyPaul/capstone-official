@@ -1,29 +1,61 @@
 import React, { useState, useEffect } from "react";
 import { FaSearch, FaEye } from "react-icons/fa";
-import axios from "axios";
+import TorModal from "../../components/layouts/modals/TorModal";
+import DegreeModal from "../../components/layouts/modals/DegreeModal";
+import ConfirmModal from "../../components/layouts/modals/ConfirmModal";
+import VcModal from "../../components/layouts/modals/VcModal";
+import { useDispatch, useSelector } from "react-redux";
+import { getStudentTor } from "../../features/student/studentSlice";
+import { getDrafts } from "../../features/draft_vc/vcSlice"; // 
 
 function VcIssue() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState([]);
-  const [vcs, setVcs] = useState([]);
   const [page, setPage] = useState(1);
   const rowsPerPage = 10;
 
-  // Fetch VC drafts from backend
+  const dispatch = useDispatch();
+
+  // --- Redux states ---
+  const { tor, student: vc, isLoading: loading } = useSelector(
+    (state) => state.student
+  );
+  const { drafts, isLoading: draftsLoading } = useSelector(
+    (state) => state.vc
+  );
+
+  const [selectedVC, setSelectedVC] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showCredentialModal, setShowCredentialModal] = useState(false);
+  const [showVCModal, setShowVCModal] = useState(false);
+
+  // Fetch drafts on mount
   useEffect(() => {
-    const fetchVCs = async () => {
-      try {
-        const res = await axios.get("/api/vc/draft");
-        setVcs(res.data); // array of VC drafts
-      } catch (err) {
-        console.error("Error fetching VC drafts:", err);
-      }
-    };
-    fetchVCs();
-  }, []);
+    dispatch(getDrafts());
+  }, [dispatch]);
+
+  const handleConfirmView = (vc) => {
+    setSelectedVC(vc);
+    setShowConfirmModal(true);
+  };
+
+  const handleViewVC = () => {
+    setShowConfirmModal(false);
+    setShowVCModal(true);
+  };
+
+  const handleViewCredential = async () => {
+    setShowConfirmModal(false);
+    if (selectedVC.type.toLowerCase() === "tor") {
+      await dispatch(getStudentTor(selectedVC.student._id));
+      setShowCredentialModal(true);
+    } else if (selectedVC.type.toLowerCase() === "degree") {
+      setShowCredentialModal(true);
+    }
+  };
 
   // Filter based on search
-  const filteredVCs = vcs.filter(
+  const filteredVCs = drafts.filter(
     (vc) =>
       vc.student?.fullName.toLowerCase().includes(search.toLowerCase()) ||
       vc.student?.studentNumber?.toLowerCase().includes(search.toLowerCase()) ||
@@ -54,23 +86,7 @@ function VcIssue() {
 
   const handleSearch = (e) => {
     e.preventDefault();
-    setPage(1); // reset to first page on new search
-  };
-
-  const handleIssueVC = async () => {
-    try {
-      for (const vcId of selected) {
-        await axios.post(`/api/vc/${vcId}/issue`);
-      }
-      alert(`Issued ${selected.length} VC(s)!`);
-      // refetch remaining drafts
-      const res = await axios.get("/api/vc/draft");
-      setVcs(res.data);
-      setSelected([]);
-    } catch (err) {
-      console.error("Error issuing VC:", err);
-      alert("Error issuing VC(s). Check console.");
-    }
+    setPage(1);
   };
 
   return (
@@ -97,7 +113,7 @@ function VcIssue() {
                         <button
                           className="btn btn-success"
                           disabled={selected.length === 0}
-                          onClick={handleIssueVC}
+                          onClick={() => alert("TODO: Issue VC logic")}
                         >
                           📤 Issue Selected
                         </button>
@@ -135,9 +151,7 @@ function VcIssue() {
                                 type="checkbox"
                                 checked={
                                   currentVCs.length > 0 &&
-                                  currentVCs.every((vc) =>
-                                    selected.includes(vc._id)
-                                  )
+                                  currentVCs.every((vc) => selected.includes(vc._id))
                                 }
                                 onChange={toggleSelectAllCurrentPage}
                               />
@@ -151,7 +165,13 @@ function VcIssue() {
                           </tr>
                         </thead>
                         <tbody>
-                          {currentVCs.length === 0 ? (
+                          {draftsLoading ? (
+                            <tr>
+                              <td colSpan="7" className="text-center">
+                                Loading drafts...
+                              </td>
+                            </tr>
+                          ) : currentVCs.length === 0 ? (
                             <tr>
                               <td colSpan="7" className="text-center">
                                 No pending credentials found.
@@ -173,7 +193,13 @@ function VcIssue() {
                                 <td>{vc.student?.program || "N/A"}</td>
                                 <td>{vc.type}</td>
                                 <td>
-                                  <button className="btn btn-sm btn-info">
+                                  <button
+                                    className="btn btn-sm btn-info"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleConfirmView(vc);
+                                    }}
+                                  >
                                     <FaEye className="me-1" /> View
                                   </button>
                                 </td>
@@ -209,9 +235,7 @@ function VcIssue() {
                           </li>
                         ))}
                         <li
-                          className={`page-item ${
-                            page === totalPages ? "disabled" : ""
-                          }`}
+                          className={`page-item ${page === totalPages ? "disabled" : ""}`}
                         >
                           <button
                             className="page-link"
@@ -229,6 +253,42 @@ function VcIssue() {
           </div>
         </div>
       </div>
+
+      {/* Modals */}
+      {showCredentialModal && selectedVC?.type?.toLowerCase() === "tor" && (
+        <TorModal
+          show={showCredentialModal}
+          student={selectedVC?.student}
+          tor={tor}
+          loading={loading}
+          onClose={() => setShowCredentialModal(false)}
+        />
+      )}
+
+      {showCredentialModal && selectedVC?.type?.toLowerCase() === "degree" && (
+        <DegreeModal
+          show={showCredentialModal}
+          student={selectedVC?.student}
+          loading={loading}
+          onClose={() => setShowCredentialModal(false)}
+        />
+      )}
+
+      <VcModal
+        show={showVCModal}
+        student={selectedVC?.student}
+        vc={selectedVC}
+        loading={loading}
+        onClose={() => setShowVCModal(false)}
+      />
+      <ConfirmModal
+        show={showConfirmModal}
+        student={selectedVC?.student}
+        vcType={selectedVC?.type?.toLowerCase()}
+        onClose={() => setShowConfirmModal(false)}
+        onViewVC={handleViewVC}
+        onViewCredential={handleViewCredential}
+      />
     </section>
   );
 }

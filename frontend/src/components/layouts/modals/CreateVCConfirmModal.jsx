@@ -5,7 +5,7 @@ import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { BsCalendar } from "react-icons/bs";
 
-function CreateVCConfirmModal({ show, count, students, onClose }) {
+function CreateVCConfirmModal({ show, count, students, onClose, onConfirm  }) {
   const [rows, setRows] = useState([]);
 
   // Helper: compute expiration based on duration string
@@ -49,35 +49,28 @@ function CreateVCConfirmModal({ show, count, students, onClose }) {
     setRows(updated);
   };
 
-  const handleSubmit = async () => {
-    try {
-      for (const row of rows) {
-        let expDate;
-        if (row.expiration === "custom" && row.customDate) {
-          expDate = new Date(row.customDate);
-        } else {
-          expDate = addDuration(row.expiration);
-        }
+ const handleSubmit = () => {
+  const vcDrafts = rows.map((row) => {
+    let expDate;
 
-        if (!expDate || isNaN(expDate.getTime())) {
-          throw new Error(`Invalid expiration date for ${row.studentName}`);
-        }
-
-        await axios.post("/api/vc/draft", {
-          studentId: row.studentId,  // ← must match backend
-          type: row.type,
-          purpose: row.purpose,
-          expiration: expDate.toISOString(),
-        });
-      }
-
-      alert("All VC drafts created successfully ✅");
-      onClose();
-    } catch (err) {
-      console.error("Error creating VC drafts:", err);
-      alert("Something went wrong ❌ Check console for details.");
+    if (row.expiration === "custom" && row.customDate) {
+      expDate = new Date(row.customDate);
+    } else {
+      expDate = addDuration(row.expiration);
     }
-  };
+
+    return {
+      studentId: row.studentId,    // ✅ backend maps this to student
+      type: row.type,
+      purpose: row.purpose,
+      expiration: expDate?.toISOString(), // ✅ ISO format string
+    };
+  });
+
+  onConfirm(vcDrafts);
+};
+
+
 
   return (
     <Modal show={show} onHide={onClose} size="lg">

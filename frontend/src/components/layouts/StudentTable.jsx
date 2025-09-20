@@ -16,6 +16,10 @@ import TorModal from "./modals/TorModal";
 import VcModal from "./modals/VcModal";
 import UnselectConfirmModal from "./modals/UnselectConfirmModal";
 import CreateVCConfirmModal from "./modals/CreateVCConfirmModal";
+import ErrorModal from "./modals/ErrorModal"
+import SuccessModal from "./modals/SuccessModal";
+import { createDrafts, reset as resetVC } from "../../features/draft_vc/vcSlice";
+
 
 function StudentTable() {
   const dispatch = useDispatch();
@@ -30,6 +34,7 @@ function StudentTable() {
   } = useSelector((state) => state.student);
 
   const [query, setQuery] = useState("");
+  const [errorMessage, setErrorMessage] = useState(null);
   const [selectedProgram, setSelectedProgram] = useState("All");
   const [selectedRows, setSelectedRows] = useState([]);
 
@@ -41,7 +46,15 @@ function StudentTable() {
   const [showVCModal, setShowVCModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showVCConfirmModal, setShowVCConfirmModal] = useState(false);
+const { isLoading: vcLoading, isSuccess: vcSuccess, isError: vcError, message: vcMessage } = useSelector(
+  (state) => state.vc
+);
 
+useEffect(() => {
+  return () => {
+    dispatch(resetVC());
+  };
+}, [dispatch]);
 
 
   useEffect(() => {
@@ -59,6 +72,11 @@ function StudentTable() {
     }
     }, [students, programs]);
 
+    useEffect(() => {
+  if (isError && error) {
+    setErrorMessage(error);
+  }
+}, [isError, error]);
 const [currentPage, setCurrentPage] = useState(1);
 const rowsPerPage = 10;
 // Calculate the indexes for current page
@@ -128,26 +146,45 @@ const handleSelectAll = () => {
   }
 };
 
-
-   if (loading) return <Spinner />;
-  if (isError) return <p className="text-danger">Error: {error}</p>;
+const [successVcs, setSuccessVcs] = useState([]);
+const [showSuccessModal, setShowSuccessModal] = useState(false);
+  if (loading) return <Spinner />;
+  
 
 const handleCreateVC = async (vcDrafts) => {
-  try {
-    const res = await fetch("/api/vc/draft", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ vcs: vcDrafts }),
-    });
-    if (!res.ok) throw new Error("Failed to save VCs");
-    const data = await res.json();
-    console.log("Saved unsigned VCs:", data);
-    setShowVCConfirmModal(false);
-  } catch (err) {
-    console.error("Error saving unsigned VCs", err);
-    alert("Failed to save VCs. Please try again.");
+  const successful = [];
+  let hadError = false;
+
+  for (const draft of vcDrafts) {
+    try {
+      await dispatch(createDrafts(draft)).unwrap();
+      console.log("Saved unsigned VC:", draft);
+      successful.push(draft);
+    } catch (err) {
+      console.error("Error saving unsigned VC:", err);
+      setErrorMessage(err); // show error modal
+      hadError = true;
+    }
+  }
+
+  setShowVCConfirmModal(false);
+
+  if (successful.length > 0) {
+    setSuccessVcs(successful);
+    setShowSuccessModal(true);
+    setSelectedRows([]);
+  }
+
+  if (hadError && successful.length === 0) {
+    // ❌ only clear if *all* failed
+    setSelectedRows([]);
+    setShowDeleteModal(false);
   }
 };
+
+
+
+
 
 // derive selected student objects
 const selectedStudents = students.filter((stu) =>
@@ -170,28 +207,20 @@ const selectedStudents = students.filter((stu) =>
       <div className="card-body">
         {/* Top Header Row */}
         <div className="row mb-3 align-items-center">
-          <div className="col-md-6">
+          <div className="col-md-9">
             <h5 className="mb-0 fw-bold">Available for VC Issuance</h5>
           </div>
           <div className="col-md-3 text-end">
             <button
               type="button"
-              className="btn btn-success w-100"
+              className="btn btn-success w-50"
               disabled={selectedRows.length === 0}
               onClick={() => setShowVCConfirmModal(true)}
             >
               Create VC
             </button>
           </div>
-          <div className="col-md-3 text-end">
-            <button
-              type="button"
-              className="btn btn-warning w-100"
-              onClick={() => setShowEditRulesModal(true)} // Implement this modal
-            >
-              Edit VC Rules
-            </button>
-          </div>
+
         </div>
 
         {/* Selection + Search Row */}
@@ -310,36 +339,44 @@ const selectedStudents = students.filter((stu) =>
 
                     {/* 📊 Students Table */}
                     <div className="table-responsive">
-                      <table className="table table-borderless mb-0">
-                        <thead>
+                      <table className="table table-dark table-hover  mb-0">
+                        <thead >
                           <tr>
                             <th></th>
                             <th>#</th>
                             <th>Student Number</th>
                             <th>Name</th>
                             <th>Program</th>
-                            <th>GWA</th>
+                            <th>Date Graduated</th>
                             <th>Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {currentStudents.map((stu, index) => (
-                        <tr key={stu._id}>
+                        <tr 
+                          key={stu._id}
+                          onClick={() => handleRowSelect(stu._id)} // toggle checkbox when row is clicked
+                          className={selectedRows.includes(stu._id) ? "selected-row table-success" : "table-light"} // add selected class
+                          style={{ cursor: "pointer" }} // show pointer
+                        >
                           <td>
                             <div className="form-check">
                               <input
-                                className="form-check-input"
-                                type="checkbox"
-                                checked={selectedRows.includes(stu._id)}
-                                onChange={() => handleRowSelect(stu._id)}
-                              />
+                              className="form-check-input"
+                              type="checkbox"
+                              checked={selectedRows.includes(stu._id)}
+                              onChange={(e) => {
+                                e.stopPropagation(); // ✅ prevent row click from firing twice
+                                handleRowSelect(stu._id);
+                              }}
+                            />
                             </div>
                           </td>
                           <td>{indexOfFirstRow + index + 1}</td>
                           <td>{stu.studentNumber}</td>
                           <td>{stu.fullName}</td>
                           <td>{stu.program}</td>
-                          <td>{stu.gwa}</td>
+                          <td>{stu.dateGraduated}</td>
                           <td>
                             <button
                               type="button"
@@ -377,7 +414,7 @@ const selectedStudents = students.filter((stu) =>
         onViewVC={handleViewVC}
         onViewTOR={handleViewTOR}
       />
-
+      
       <TorModal
         show={showTORModal}
         student={selectedStudent}
@@ -406,8 +443,21 @@ const selectedStudents = students.filter((stu) =>
           count={selectedStudents.length}
           students={selectedStudents}
           onClose={() => setShowVCConfirmModal(false)}
-          onConfirm={handleCreateVC}
+          onConfirm={handleCreateVC}   // ✅ Important
         />
+
+        <ErrorModal
+          show={!!errorMessage}
+          message={errorMessage}
+          onClose={() => setErrorMessage(null)}
+        />
+        <SuccessModal
+        show={showSuccessModal}
+        vcs={successVcs}
+        onClose={() => setShowSuccessModal(false)}
+      />
+
+
 
       </section>
 
