@@ -1,12 +1,12 @@
 import React from 'react'
-
+import GasStats from '../components/layouts/GasStats'
 function Blockchain() {
   return (
 
     <section className="header">
-        <h1>
-            Blockchain Explorer!
-        </h1>
+
+    <GasStats/>
+
     </section>
   )
 }

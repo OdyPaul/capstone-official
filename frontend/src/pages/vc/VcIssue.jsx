@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { FaSearch, FaEye } from "react-icons/fa";
+import { FaSearch, FaEye, FaTimes } from "react-icons/fa";
 import TorModal from "../../components/layouts/modals/TorModal";
 import DegreeModal from "../../components/layouts/modals/DegreeModal";
 import ConfirmModal from "../../components/layouts/modals/ConfirmModal";
 import VcModal from "../../components/layouts/modals/VcModal";
 import { useDispatch, useSelector } from "react-redux";
 import { getStudentTor } from "../../features/student/studentSlice";
-import { getDrafts } from "../../features/draft_vc/vcSlice"; // 
+import { getDrafts } from "../../features/draft_vc/vcSlice";
 
 function VcIssue() {
   const [search, setSearch] = useState("");
@@ -15,21 +15,16 @@ function VcIssue() {
   const rowsPerPage = 10;
 
   const dispatch = useDispatch();
-
-  // --- Redux states ---
   const { tor, student: vc, isLoading: loading } = useSelector(
     (state) => state.student
   );
-  const { drafts, isLoading: draftsLoading } = useSelector(
-    (state) => state.vc
-  );
+  const { drafts, isLoading: draftsLoading } = useSelector((state) => state.vc);
 
   const [selectedVC, setSelectedVC] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showCredentialModal, setShowCredentialModal] = useState(false);
   const [showVCModal, setShowVCModal] = useState(false);
 
-  // Fetch drafts on mount
   useEffect(() => {
     dispatch(getDrafts());
   }, [dispatch]);
@@ -54,7 +49,7 @@ function VcIssue() {
     }
   };
 
-  // Filter based on search
+  // --- Filtering + pagination ---
   const filteredVCs = drafts.filter(
     (vc) =>
       vc.student?.fullName.toLowerCase().includes(search.toLowerCase()) ||
@@ -63,10 +58,9 @@ function VcIssue() {
   );
 
   const totalPages = Math.ceil(filteredVCs.length / rowsPerPage);
-  const currentVCs = filteredVCs.slice(
-    (page - 1) * rowsPerPage,
-    page * rowsPerPage
-  );
+  const indexOfLastRow = page * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentVCs = filteredVCs.slice(indexOfFirstRow, indexOfLastRow);
 
   const toggleSelect = (id) => {
     setSelected((prev) =>
@@ -84,13 +78,17 @@ function VcIssue() {
     }
   };
 
+  const handleUnselectSelected = () => {
+    setSelected([]);
+  };
+
   const handleSearch = (e) => {
     e.preventDefault();
     setPage(1);
   };
 
   return (
-    <section className="intro mt-4">
+    <section className="intro">
       <div className="bg-image h-100">
         <div className="mask d-flex align-items-center h-100">
           <div className="container">
@@ -101,17 +99,16 @@ function VcIssue() {
                   style={{ backgroundColor: "#f5f7fa" }}
                 >
                   <div className="card-body">
-                    {/* Header */}
-                    <div className="d-flex justify-content-between align-items-center mb-3">
-                      <h5 className="fw-bold mb-0">
-                        Verifiable Credential Issuance
-                      </h5>
-                      <div>
-                        <button className="btn btn-warning me-2">
-                          ⚙️ Edit VC Rules
-                        </button>
+                    {/* Top Header Row */}
+                    <div className="row mb-3 align-items-center">
+                      <div className="col-md-9">
+                        <h5 className="mb-0 fw-bold">
+                          Verifiable Credential Issuance
+                        </h5>
+                      </div>
+                      <div className="col-md-3 text-end">
                         <button
-                          className="btn btn-success"
+                          className="btn btn-success w-50"
                           disabled={selected.length === 0}
                           onClick={() => alert("TODO: Issue VC logic")}
                         >
@@ -120,38 +117,67 @@ function VcIssue() {
                       </div>
                     </div>
 
-                    {/* Search Bar */}
-                    <form onSubmit={handleSearch} className="row g-2 mb-4">
-                      <div className="col-md-6">
-                        <input
-                          type="text"
-                          className="form-control"
-                          placeholder="Search student name, number, or VC type"
-                          value={search}
-                          onChange={(e) => setSearch(e.target.value)}
-                        />
-                      </div>
-                      <div className="col-auto">
+                    {/* Selection + Search Row */}
+                    <div className="row mb-3 align-items-center">
+                      <div className="col-md-6 d-flex align-items-center">
                         <button
-                          type="submit"
-                          className="btn btn-primary d-flex align-items-center"
+                          type="button"
+                          className="btn btn-outline-danger position-relative"
+                          onClick={handleUnselectSelected}
+                          disabled={selected.length === 0}
                         >
-                          <FaSearch className="me-1" /> Search
+                          <FaTimes className="me-1" />
+                          Remove
+                          {selected.length > 0 && (
+                            <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-secondary">
+                              {selected.length}
+                              <span className="visually-hidden">
+                                selected credentials
+                              </span>
+                            </span>
+                          )}
                         </button>
                       </div>
-                    </form>
+
+                      <div className="col-md-6">
+                        <form
+                          onSubmit={handleSearch}
+                          className="row g-2 justify-content-end"
+                        >
+                          <div className="col-md-6">
+                            <input
+                              type="text"
+                              className="form-control"
+                              placeholder="Search by name, student number, or VC type"
+                              value={search}
+                              onChange={(e) => setSearch(e.target.value)}
+                            />
+                          </div>
+                          <div className="col-auto">
+                            <button
+                              type="submit"
+                              className="btn btn-primary d-flex align-items-center"
+                            >
+                              <FaSearch className="me-1" /> Search
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
 
                     {/* Table */}
                     <div className="table-responsive">
-                      <table className="table table-bordered table-hover align-middle">
-                        <thead className="table-light">
+                      <table className="table table-dark table-hover mb-0">
+                        <thead>
                           <tr>
                             <th>
                               <input
                                 type="checkbox"
                                 checked={
                                   currentVCs.length > 0 &&
-                                  currentVCs.every((vc) => selected.includes(vc._id))
+                                  currentVCs.every((vc) =>
+                                    selected.includes(vc._id)
+                                  )
                                 }
                                 onChange={toggleSelectAllCurrentPage}
                               />
@@ -179,28 +205,43 @@ function VcIssue() {
                             </tr>
                           ) : (
                             currentVCs.map((vc, idx) => (
-                              <tr key={vc._id}>
+                              <tr
+                                key={vc._id}
+                                onClick={() => toggleSelect(vc._id)}
+                                className={
+                                  selected.includes(vc._id)
+                                    ? "selected-row table-success"
+                                    : "table-light"
+                                }
+                                style={{ cursor: "pointer" }}
+                              >
                                 <td>
-                                  <input
-                                    type="checkbox"
-                                    checked={selected.includes(vc._id)}
-                                    onChange={() => toggleSelect(vc._id)}
-                                  />
+                                  <div className="form-check">
+                                    <input
+                                      className="form-check-input"
+                                      type="checkbox"
+                                      checked={selected.includes(vc._id)}
+                                      onChange={(e) => {
+                                        e.stopPropagation();
+                                        toggleSelect(vc._id);
+                                      }}
+                                    />
+                                  </div>
                                 </td>
-                                <td>{(page - 1) * rowsPerPage + idx + 1}</td>
+                                <td>{indexOfFirstRow + idx + 1}</td>
                                 <td>{vc.student?.studentNumber || "N/A"}</td>
                                 <td>{vc.student?.fullName || "N/A"}</td>
                                 <td>{vc.student?.program || "N/A"}</td>
                                 <td>{vc.type}</td>
                                 <td>
                                   <button
-                                    className="btn btn-sm btn-info"
+                                    className="btn btn-info btn-sm px-3 me-2"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleConfirmView(vc);
                                     }}
                                   >
-                                    <FaEye className="me-1" /> View
+                                    <FaEye />
                                   </button>
                                 </td>
                               </tr>
@@ -211,41 +252,53 @@ function VcIssue() {
                     </div>
 
                     {/* Pagination */}
-                    <nav>
-                      <ul className="pagination justify-content-end">
-                        <li className={`page-item ${page === 1 ? "disabled" : ""}`}>
-                          <button
-                            className="page-link"
-                            onClick={() => setPage(page - 1)}
-                          >
-                            &laquo;
-                          </button>
-                        </li>
-                        {Array.from({ length: totalPages }).map((_, i) => (
-                          <li
-                            key={i}
-                            className={`page-item ${page === i + 1 ? "active" : ""}`}
-                          >
-                            <button
-                              className="page-link"
-                              onClick={() => setPage(i + 1)}
+                    <div className="row mt-3">
+                      <div className="col-md-12 text-end">
+                        <nav aria-label="Page navigation">
+                          <ul className="pagination justify-content-end mb-0">
+                            <li
+                              className={`page-item ${page === 1 && "disabled"}`}
                             >
-                              {i + 1}
-                            </button>
-                          </li>
-                        ))}
-                        <li
-                          className={`page-item ${page === totalPages ? "disabled" : ""}`}
-                        >
-                          <button
-                            className="page-link"
-                            onClick={() => setPage(page + 1)}
-                          >
-                            &raquo;
-                          </button>
-                        </li>
-                      </ul>
-                    </nav>
+                              <button
+                                className="page-link"
+                                onClick={() => setPage(Math.max(page - 1, 1))}
+                              >
+                                &laquo;
+                              </button>
+                            </li>
+                            {Array.from({ length: totalPages }, (_, i) => (
+                              <li
+                                key={i + 1}
+                                className={`page-item ${
+                                  page === i + 1 ? "active" : ""
+                                }`}
+                              >
+                                <button
+                                  className="page-link"
+                                  onClick={() => setPage(i + 1)}
+                                >
+                                  {i + 1}
+                                </button>
+                              </li>
+                            ))}
+                            <li
+                              className={`page-item ${
+                                page === totalPages && "disabled"
+                              }`}
+                            >
+                              <button
+                                className="page-link"
+                                onClick={() =>
+                                  setPage(Math.min(page + 1, totalPages))
+                                }
+                              >
+                                &raquo;
+                              </button>
+                            </li>
+                          </ul>
+                        </nav>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

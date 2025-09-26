@@ -27,3 +27,6 @@
     transition: transform 0.3s ease;
 }
 
+.dropdown-toggle::after {
+  display: none !important;
+}

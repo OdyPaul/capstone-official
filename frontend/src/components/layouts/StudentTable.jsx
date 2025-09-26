@@ -228,17 +228,21 @@ const selectedStudents = students.filter((stu) =>
 <div className="row mb-3 align-items-center">
   {/* Left side: Selected count + unselect */}
   <div className="col-md-6 d-flex align-items-center">
-    <span className="me-2 fw-bold">
-      Selected: {selectedRows.length}
-    </span>
-    <button
-      type="button"
-      className="btn btn-outline-danger btn-sm"
-      onClick={handleUnselectSelected}
-      disabled={selectedRows.length === 0}
-    >
-      <FaTimes className="me-1" /> 
-    </button>
+  <button
+    type="button"
+    className="btn btn-outline-danger position-relative"
+    onClick={handleUnselectSelected}
+    disabled={selectedRows.length === 0}
+  >
+    <FaTimes className="me-1" />
+    Remove
+    {selectedRows.length > 0 && (
+      <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-secondary">
+        {selectedRows.length}
+        <span className="visually-hidden">selected students</span>
+      </span>
+    )}
+  </button>
   </div>
 
   {/* Right side: Search input (6 col) + button */}
