@@ -53,11 +53,14 @@ function Table() {
                           </tr>
                         </thead>
                         <tbody>
-                          {users.map((u, index) => (
+                          
+                          {users
+                          .filter((u) => u.role === "staff" || u.role === "admin")
+                          .map((u, index) => (
                             <tr key={u._id}>
                               <th scope="row">
                                 <div className="form-check">
-                                  <input
+                                   <input
                                     className="form-check-input"
                                     type="checkbox"
                                   />

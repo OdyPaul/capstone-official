@@ -32,23 +32,21 @@ export const register = createAsyncThunk('auth/register',
 )
 
 // Login user
-export const login = createAsyncThunk('auth/login',
+export const login = createAsyncThunk("auth/login",
   async (user, thunkAPI) => {
     try {
-      const response = await authService.login(user)
-      if (response) {
-        localStorage.setItem('user', JSON.stringify(response)) // ✅ persist with role
-      }
-      return response
+      // no saving here, only service decides
+      return await authService.login(user);
     } catch (error) {
       const message =
-        (error.response && error.response.data && error.response.data.message) ||
+        error.response?.data?.message ||
         error.message ||
-        error.toString()
-      return thunkAPI.rejectWithValue(message)
+        "Login failed";
+      return thunkAPI.rejectWithValue(message);
     }
   }
-)
+);
+
 
 export const logout = createAsyncThunk('auth/logout',
   async () => {
@@ -90,6 +88,8 @@ export const authSlice = createSlice({
       .addCase(login.fulfilled, (state, action) => {
         state.isLoading = false
         state.isSuccess = true
+        state.isError = false     // ✅ clear old error
+        state.message = ''        // ✅ clear old message
         state.user = action.payload // ✅ includes role
       })
       .addCase(login.rejected, (state, action) => {

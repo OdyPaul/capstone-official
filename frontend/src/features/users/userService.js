@@ -1,13 +1,14 @@
 import axios from 'axios'
+import { API_URL } from '../../../config';
 
-const API_URL = '/api/users/'
+
 
 // Get all users
 const getUsers = async (token) => {
   const config = {
     headers: { Authorization: `Bearer ${token}` },
   }
-  const response = await axios.get(API_URL, config)
+  const response = await axios.get(`${API_URL}/api/web/users`, config)
   return response.data
 }
 

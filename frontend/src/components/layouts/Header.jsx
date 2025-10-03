@@ -8,7 +8,7 @@ const Topnav = () => {
     const {user} = useSelector((state) => state.auth)
   return (
     <nav className="navbar navbar-expand-lg navbar-light bg-light shadow-sm sticky-top p-3">
-      <div className="container-fluid ms-5 ">
+      <div className="container-fluid ">
         {/* Search Form */}
         <form className="d-flex ms-3">
           <input className="form-control me-2" type="search" placeholder="Search" aria-label="Search" />

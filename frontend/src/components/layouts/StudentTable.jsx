@@ -2,111 +2,140 @@ import { useEffect, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   getPassingStudents,
-  searchStudents,
   getStudentTor,
   getStudentById,
-  reset
+  reset,
 } from "../../features/student/studentSlice";
 
-import { FaTimes, FaCog, FaEye, FaSearch } from "react-icons/fa";
+import {
+  FaTimes,
+  FaCog,
+  FaEye,
+  FaSearch,
+  FaTrash,
+} from "react-icons/fa";
 import "./css/table.css";
-import Spinner from "./Spinner";
-import ConfirmModal from "./modals/ConfirmModal";
+
 import TorModal from "./modals/TorModal";
 import VcModal from "./modals/VcModal";
 import UnselectConfirmModal from "./modals/UnselectConfirmModal";
 import CreateVCConfirmModal from "./modals/CreateVCConfirmModal";
-import ErrorModal from "./modals/ErrorModal"
+import ErrorModal from "./modals/ErrorModal";
 import SuccessModal from "./modals/SuccessModal";
+import LoadStudentModal from "./modals/LoadStudentModal";
+import StudentInfoModal from "./modals/StudentInfoModal";
 import { createDrafts, reset as resetVC } from "../../features/draft_vc/vcSlice";
-
 
 function StudentTable() {
   const dispatch = useDispatch();
 
   const {
     students,
-    student: vc, // VC data = single student object
+    student: vc,
     tor,
-    isLoading: loading,
+    isLoadingList: loading,
     isError,
     message: error,
   } = useSelector((state) => state.student);
+
+
 
   const [query, setQuery] = useState("");
   const [errorMessage, setErrorMessage] = useState(null);
   const [selectedProgram, setSelectedProgram] = useState("All");
   const [selectedRows, setSelectedRows] = useState([]);
-
   const [programs, setPrograms] = useState([]);
-
   const [selectedStudent, setSelectedStudent] = useState(null);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [showTORModal, setShowTORModal] = useState(false);
-  const [showVCModal, setShowVCModal] = useState(false);
+
+
+
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showVCConfirmModal, setShowVCConfirmModal] = useState(false);
-const { isLoading: vcLoading, isSuccess: vcSuccess, isError: vcError, message: vcMessage } = useSelector(
-  (state) => state.vc
-);
+  const [showLoadStudentModal, setShowLoadStudentModal] = useState(false);
+const [showStudentInfoModal, setShowStudentInfoModal] = useState(false);
+  const [successVcs, setSuccessVcs] = useState([]);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-useEffect(() => {
-  return () => {
-    dispatch(resetVC());
-  };
-}, [dispatch]);
-
-
+  // Reset VC on unmount
   useEffect(() => {
-    dispatch(getPassingStudents());
     return () => {
-      dispatch(reset());
+      dispatch(resetVC());
     };
   }, [dispatch]);
 
-    useEffect(() => {
-    // Grab all programs when students first load
-    if (students.length > 0 && programs.length === 0) {
-        const uniquePrograms = [...new Set(students.map((s) => s.program))];
-        setPrograms(uniquePrograms);
-    }
-    }, [students, programs]);
+useEffect(() => {
+  // ❌ remove this reset
+  // return () => {
+  //   dispatch(reset());
+  // };
+}, [dispatch]);
 
-    useEffect(() => {
-  if (isError && error) {
-    setErrorMessage(error);
+
+
+
+
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const rowsPerPage = 10;
+  const indexOfLastRow = currentPage * rowsPerPage;
+  const indexOfFirstRow = indexOfLastRow - rowsPerPage;
+  const currentStudents = students.slice(indexOfFirstRow, indexOfLastRow);
+  const totalPages = Math.ceil(students.length / rowsPerPage);
+
+  // Show error messages
+  useEffect(() => {
+    if (isError && error) {
+      setErrorMessage(error);
+    }
+  }, [isError, error]);
+  
+  
+  // Grab all programs from loaded students
+useEffect(() => {
+  if (students.length > 0) {
+    const uniquePrograms = [...new Set(students.map((s) => s.program))];
+    setPrograms(uniquePrograms);
+  } else {
+    setPrograms([]);
   }
-}, [isError, error]);
-const [currentPage, setCurrentPage] = useState(1);
-const rowsPerPage = 10;
-// Calculate the indexes for current page
-const indexOfLastRow = currentPage * rowsPerPage;
-const indexOfFirstRow = indexOfLastRow - rowsPerPage;
-const currentStudents = students.slice(indexOfFirstRow, indexOfLastRow);
+}, [students]);
 
-// Calculate total pages
-const totalPages = Math.ceil(students.length / rowsPerPage);
 
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (!query) {
-      dispatch(getPassingStudents());
-    } else {
-      dispatch(searchStudents(query));
-    }
-  };
 
-  const handleApplyProgram = () => {
-    if (selectedProgram === "All") {
-      dispatch(getPassingStudents());
-    } else {
-      dispatch(searchStudents(selectedProgram));
-    }
-  };
+
+
+
+// Search
+const handleSearch = (e) => {
+  console.log("Search query:", query);
+  e.preventDefault();
+  dispatch(
+    getPassingStudents({
+      ...(selectedProgram !== "All" && { programs: String(selectedProgram) }),
+      ...(query && { q: query }),
+    })
+  
+  );
+};
+
+
+// Apply program filter
+const handleApplyProgram = () => {
+  dispatch(
+    getPassingStudents({
+      ...(selectedProgram !== "All" && { programs: String(selectedProgram) }),
+      ...(query && { q: query }),
+    })
+  );
+};
+
+  
 
   const handleRowSelect = (id) => {
     setSelectedRows((prev) =>
-      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
+      prev.includes(id)
+        ? prev.filter((sid) => sid !== id)
+        : [...prev, id]
     );
   };
 
@@ -117,7 +146,7 @@ const totalPages = Math.ceil(students.length / rowsPerPage);
 
   const handleConfirmView = (student) => {
     setSelectedStudent(student);
-    setShowConfirmModal(true);
+    setShowStudentInfoModal(true);
   };
 
   const handleViewTOR = () => {
@@ -132,219 +161,190 @@ const totalPages = Math.ceil(students.length / rowsPerPage);
     dispatch(getStudentById(selectedStudent._id));
   };
 
-const handleSelectAll = () => {
-  const currentPageIds = currentStudents.map((s) => s._id);
+  const handleSelectAll = () => {
+    const currentPageIds = currentStudents.map((s) => s._id);
+    const allSelected = currentPageIds.every((id) =>
+      selectedRows.includes(id)
+    );
 
-  const allSelected = currentPageIds.every((id) => selectedRows.includes(id));
-
-  if (allSelected) {
-    // Unselect current page
-    setSelectedRows((prev) => prev.filter((id) => !currentPageIds.includes(id)));
-  } else {
-    // Add current page students to selected
-    setSelectedRows((prev) => [...new Set([...prev, ...currentPageIds])]);
-  }
-};
-
-const [successVcs, setSuccessVcs] = useState([]);
-const [showSuccessModal, setShowSuccessModal] = useState(false);
-  if (loading) return <Spinner />;
-  
-
-const handleCreateVC = async (vcDrafts) => {
-  const successful = [];
-  let hadError = false;
-
-  for (const draft of vcDrafts) {
-    try {
-      await dispatch(createDrafts(draft)).unwrap();
-      console.log("Saved unsigned VC:", draft);
-      successful.push(draft);
-    } catch (err) {
-      console.error("Error saving unsigned VC:", err);
-      setErrorMessage(err); // show error modal
-      hadError = true;
+    if (allSelected) {
+      setSelectedRows((prev) =>
+        prev.filter((id) => !currentPageIds.includes(id))
+      );
+    } else {
+      setSelectedRows((prev) => [
+        ...new Set([...prev, ...currentPageIds]),
+      ]);
     }
-  }
+  };
 
-  setShowVCConfirmModal(false);
+  const handleCreateVC = async (vcDrafts) => {
+    const successful = [];
+    let hadError = false;
 
-  if (successful.length > 0) {
-    setSuccessVcs(successful);
-    setShowSuccessModal(true);
-    setSelectedRows([]);
-  }
+    for (const draft of vcDrafts) {
+      try {
+        await dispatch(createDrafts(draft)).unwrap();
+        successful.push(draft);
+      } catch (err) {
+        console.error("Error saving unsigned VC:", err);
+        setErrorMessage(err);
+        hadError = true;
+      }
+    }
 
-  if (hadError && successful.length === 0) {
-    // ❌ only clear if *all* failed
-    setSelectedRows([]);
-    setShowDeleteModal(false);
-  }
-};
+    setShowVCConfirmModal(false);
 
+    if (successful.length > 0) {
+      setSuccessVcs(successful);
+      setShowSuccessModal(true);
+      setSelectedRows([]);
+    }
 
+    if (hadError && successful.length === 0) {
+      setSelectedRows([]);
+      setShowDeleteModal(false);
+    }
+  };
 
-
-
-// derive selected student objects
-const selectedStudents = students.filter((stu) =>
-  selectedRows.includes(stu._id)
-);
-
+  const selectedStudents = students.filter((stu) =>
+    selectedRows.includes(stu._id)
+  );
 
 
   return (
-    <section className="intro">
-      <div className="bg-image h-100">
-        <div className="mask d-flex align-items-center h-100">
-          <div className="container">
-            <div className="row justify-content-center">
-  <div className="col-12">
-    <div
-      className="card shadow-2-strong"
-      style={{ backgroundColor: "#f5f7fa" }}
-    >
-      <div className="card-body">
-        {/* Top Header Row */}
-        <div className="row mb-3 align-items-center">
-          <div className="col-md-9">
-            <h5 className="mb-0 fw-bold">Available for VC Issuance</h5>
-          </div>
-          <div className="col-md-3 text-end">
-            <button
-              type="button"
-              className="btn btn-success w-50"
-              disabled={selectedRows.length === 0}
-              onClick={() => setShowVCConfirmModal(true)}
-            >
-              Create VC
-            </button>
-          </div>
+  <section className="intro mt-3 mb-3">
+    <div className="bg-image h-100">
+      <div className="mask d-flex align-items-center h-100">
+        <div className="container">
+          <div className="row justify-content-center">
+            <div className="col-12">
+              <div
+                className="card shadow-2-strong"
+                style={{ backgroundColor: "#f5f7fa" }}
+              >
+                <div className="card-body">
+                  
+                  {/* 🏷️ Title Row */}
+                  <div className="row mb-3">
+                    <div className="col-12">
+                      <h5 className="mb-0 fw-bold">
+                        Available for VC Issuance
+                      </h5>
+                    </div>
+                  </div>
 
-        </div>
+                  {/* 🔝 Top Controls Row */}
+                  <div className="row mb-3">
+                    <div className="col-12 d-flex align-items-center">
+                      <button
+                        type="button"
+                        className="btn btn-primary me-2"
+                        onClick={() => setShowLoadStudentModal(true)}
+                      >
+                        Load VC
+                      </button>
 
-        {/* Selection + Search Row */}
-{/* Selection + Search Row */}
-<div className="row mb-3 align-items-center">
-  {/* Left side: Selected count + unselect */}
-  <div className="col-md-6 d-flex align-items-center">
-  <button
-    type="button"
-    className="btn btn-outline-danger position-relative"
-    onClick={handleUnselectSelected}
-    disabled={selectedRows.length === 0}
-  >
-    <FaTimes className="me-1" />
-    Remove
-    {selectedRows.length > 0 && (
-      <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-secondary">
-        {selectedRows.length}
-        <span className="visually-hidden">selected students</span>
-      </span>
-    )}
-  </button>
-  </div>
+                      <button
+                        type="button"
+                        className="btn btn-warning me-2"
+                        onClick={() => {
+                          setSelectedRows([]);
+                          setPrograms([]);          // clear local programs state
+                          setQuery("");             // clear search box
+                          setSelectedProgram("All"); // reset program filter
+                          dispatch(reset());        // clear students & redux state
+                        }}
+                      >
+                        Reset Table
+                      </button>
 
-  {/* Right side: Search input (6 col) + button */}
-          <div className="col-md-6">
-            <form onSubmit={handleSearch} className="row g-2 justify-content-end">
-              <div className="col-md-6">
-                <input
-                  type="text"
-                  className="form-control"
-                  placeholder="Search by name, student number, or program"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
+
+                      <button
+                        type="button"
+                        className="btn btn-success me-2"
+                        disabled={selectedRows.length === 0}
+                        onClick={() => setShowVCConfirmModal(true)}
+                      >
+                        Create VC
+                      </button>
+                    </div>
+                  </div>
+
+               {/* 🔍 Filters + Search Row */}
+            <div className="row mb-3 align-items-center">
+              {/* Left side → Search */}
+              <div className="col-md-6 d-flex">
+                <form onSubmit={handleSearch} className="d-flex w-100">
+                  <input
+                    type="text"
+                    className="form-control me-2"
+                    placeholder="Search by name, student number, or program"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn-primary d-flex align-items-center"
+                  >
+                    <FaSearch className="me-1" /> Search
+                  </button>
+                </form>
               </div>
-              <div className="col-auto">
-                <button
-                  type="submit"
-                  className="btn btn-primary d-flex align-items-center"
+
+              {/* Right side → Filters */}
+              <div className="col-md-6 d-flex justify-content-end align-items-center">
+                <select
+                  className="form-select me-2"
+                  value={selectedProgram}
+                  onChange={(e) => setSelectedProgram(e.target.value)}
+                  style={{ maxWidth: "200px" }}
                 >
-                  <FaSearch className="me-1" /> Search
+                  <option value="All">All</option>
+                  {programs.map((prog) => (
+                    <option key={prog} value={prog}>
+                      {prog}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary me-2"
+                  onClick={handleApplyProgram}
+                >
+                  Apply
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-outline-dark me-2"
+                  onClick={handleSelectAll}
+                >
+                  ALL
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-outline-danger position-relative"
+                  onClick={handleUnselectSelected}
+                  disabled={selectedRows.length === 0}
+                >
+                  <FaTrash />
+                  {selectedRows.length > 0 && (
+                    <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-secondary">
+                      {selectedRows.length}
+                    </span>
+                  )}
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-
-
-        {/* Filters + Pagination */}
-        <div className="row mb-3 align-items-center">
-          <div className="col-md-6 d-flex">
-            <select
-              className="form-select me-2"
-              value={selectedProgram}
-              onChange={(e) => setSelectedProgram(e.target.value)}
-            >
-              <option value="All">All</option>
-              {programs.map((prog) => (
-                <option key={prog} value={prog}>{prog}</option>
-              ))}
-            </select>
-
-            <button
-              type="button"
-              className="btn btn-secondary me-2"
-              onClick={handleApplyProgram}
-            >
-              Apply
-            </button>
-
-            <button
-              type="button"
-              className="btn btn-outline-dark"
-              onClick={handleSelectAll}
-            >
-              ALL
-            </button>
-          </div>
-
-          <div className="col-md-6 text-end">
-            <nav aria-label="Page navigation">
-              <ul className="pagination justify-content-end mb-0">
-                <li className={`page-item ${currentPage === 1 && "disabled"}`}>
-                  <button
-                    className="page-link"
-                    onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  >
-                    &laquo;
-                  </button>
-                </li>
-
-                {Array.from({ length: totalPages }, (_, i) => (
-                  <li
-                    key={i + 1}
-                    className={`page-item ${currentPage === i + 1 ? "active" : ""}`}
-                  >
-                    <button className="page-link" onClick={() => setCurrentPage(i + 1)}>
-                      {i + 1}
-                    </button>
-                  </li>
-                ))}
-
-                <li className={`page-item ${currentPage === totalPages && "disabled"}`}>
-                  <button
-                    className="page-link"
-                    onClick={() =>
-                      setCurrentPage((prev) => Math.min(prev + 1, totalPages))
-                    }
-                  >
-                    &raquo;
-                  </button>
-                </li>
-              </ul>
-            </nav>
-
-          </div>
-        </div>
+            </div>
 
 
                     {/* 📊 Students Table */}
                     <div className="table-responsive">
-                      <table className="table table-dark table-hover  mb-0">
-                        <thead >
+                      <table className="table table-dark table-hover mb-0">
+                        <thead>
                           <tr>
                             <th></th>
                             <th>#</th>
@@ -356,84 +356,171 @@ const selectedStudents = students.filter((stu) =>
                           </tr>
                         </thead>
                         <tbody>
-                          {currentStudents.map((stu, index) => (
-                        <tr 
-                          key={stu._id}
-                          onClick={() => handleRowSelect(stu._id)} // toggle checkbox when row is clicked
-                          className={selectedRows.includes(stu._id) ? "selected-row table-success" : "table-light"} // add selected class
-                          style={{ cursor: "pointer" }} // show pointer
-                        >
-                          <td>
-                            <div className="form-check">
-                              <input
-                              className="form-check-input"
-                              type="checkbox"
-                              checked={selectedRows.includes(stu._id)}
-                              onChange={(e) => {
-                                e.stopPropagation(); // ✅ prevent row click from firing twice
-                                handleRowSelect(stu._id);
-                              }}
-                            />
-                            </div>
-                          </td>
-                          <td>{indexOfFirstRow + index + 1}</td>
-                          <td>{stu.studentNumber}</td>
-                          <td>{stu.fullName}</td>
-                          <td>{stu.program}</td>
-                          <td>{stu.dateGraduated}</td>
-                          <td>
-                            <button
-                              type="button"
-                              className="btn btn-info btn-sm px-3 me-2"
-                              onClick={() => handleConfirmView(stu)}
-                            >
-                              <FaEye />
-                            </button>
-                            <button type="button" className="btn btn-primary btn-sm px-3 me-2">
-                              <FaCog />
-                            </button>
-                            <button type="button" className="btn btn-danger btn-sm px-3">
-                              <FaTimes />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-
-                        </tbody>
-                      </table>
-                      {students.length === 0 && <p>No students found.</p>}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+  {loading ? (
+    <tr>
+      <td colSpan="7" className="text-center py-4">
+        <div className="d-flex flex-column align-items-center">
+          <div className="spinner-border text-success mb-2" role="status">
+            <span className="visually-hidden">Loading...</span>
           </div>
+          <span>Loading students...</span>
         </div>
-      </div>
+      </td>
+    </tr>
+  ) : currentStudents.length > 0 ? (
+    currentStudents.map((stu, index) => (
+      <tr
+        key={stu._id}
+        onClick={() => handleRowSelect(stu._id)}
+        className={
+          selectedRows.includes(stu._id)
+            ? "selected-row table-success"
+            : "table-light"
+        }
+        style={{ cursor: "pointer" }}
+      >
+        <td>
+          <div className="form-check">
+            <input
+              className="form-check-input"
+              type="checkbox"
+              checked={selectedRows.includes(stu._id)}
+              onChange={(e) => {
+                e.stopPropagation();
+                handleRowSelect(stu._id);
+              }}
+            />
+          </div>
+        </td>
+        <td>{indexOfFirstRow + index + 1}</td>
+        <td>{stu.studentNumber}</td>
+        <td>{stu.fullName}</td>
+        <td>{stu.program}</td>
+        <td>{stu.dateGraduated ? stu.dateGraduated.split("T")[0] : ""}</td>
+        <td>
+          <button
+            type="button"
+            className="btn btn-info btn-sm px-3 me-2"
+            onClick={() => handleConfirmView(stu)}
+          >
+            <FaEye />
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm px-3 me-2"
+          >
+            <FaCog />
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger btn-sm px-3"
+          >
+            <FaTimes />
+          </button>
+        </td>
+      </tr>
+    ))
+  ) : (
+    <tr>
+      <td colSpan="7" className="text-center py-4">
+        No students found.
+      </td>
+    </tr>
+  )}
+</tbody>
 
-      <ConfirmModal
-        show={showConfirmModal}
-        student={selectedStudent}
-        onClose={() => setShowConfirmModal(false)}
-        onViewVC={handleViewVC}
-        onViewTOR={handleViewTOR}
-      />
-      
-      <TorModal
-        show={showTORModal}
-        student={selectedStudent}
-        tor={tor}
-        loading={loading}
-        onClose={() => setShowTORModal(false)}
-      />
+                      </table>
+                    </div>
 
-      <VcModal
-        show={showVCModal}
-        student={selectedStudent}
-        vc={vc}
-        loading={loading}
-        onClose={() => setShowVCModal(false)}
-      />
+                    {/* 📑 Pagination Row */}
+                    <div className="row mt-3">
+                      <div className="col-md-12 d-flex justify-content-end">
+                        <nav aria-label="Page navigation">
+                          <ul className="pagination mb-0">
+                            <li
+                              className={`page-item ${
+                                currentPage === 1 ? "disabled" : ""
+                              }`}
+                            >
+                              <button
+                                className="page-link"
+                                onClick={() =>
+                                  setCurrentPage((prev) =>
+                                    Math.max(prev - 1, 1)
+                                  )
+                                }
+                              >
+                                &laquo;
+                              </button>
+                            </li>
+
+                            {Array.from(
+                              { length: totalPages },
+                              (_, i) => (
+                                <li
+                                  key={i + 1}
+                                  className={`page-item ${
+                                    currentPage === i + 1
+                                      ? "active"
+                                      : ""
+                                  }`}
+                                >
+                                  <button
+                                    className="page-link"
+                                    onClick={() =>
+                                      setCurrentPage(i + 1)
+                                    }
+                                  >
+                                    {i + 1}
+                                  </button>
+                                </li>
+                              )
+                            )}
+
+                            <li
+                              className={`page-item ${
+                                currentPage === totalPages
+                                  ? "disabled"
+                                  : ""
+                              }`}
+                            >
+                              <button
+                                className="page-link"
+                                onClick={() =>
+                                  setCurrentPage((prev) =>
+                                    Math.min(prev + 1, totalPages)
+                                  )
+                                }
+                              >
+                                &raquo;
+                              </button>
+                            </li>
+                          </ul>
+                        </nav>
+                      </div>
+                    </div>
+                  </div>{" "}
+                  {/* end card-body */}
+                </div>{" "}
+                {/* end card */}
+              </div>{" "}
+              {/* end col */}
+            </div>{" "}
+            {/* end row */}
+          </div>{" "}
+          {/* end container */}
+        </div>{" "}
+        {/* end mask */}
+      </div>{" "}
+      {/* end bg-image */}
+
+    <StudentInfoModal
+      show={showStudentInfoModal}
+      student={selectedStudent}
+      onClose={() => setShowStudentInfoModal(false)}
+    />
+
+
 
       <UnselectConfirmModal
         show={showDeleteModal}
@@ -442,29 +529,40 @@ const selectedStudents = students.filter((stu) =>
         onConfirm={handleUnselectSelected}
       />
 
-        <CreateVCConfirmModal
-          show={showVCConfirmModal}
-          count={selectedStudents.length}
-          students={selectedStudents}
-          onClose={() => setShowVCConfirmModal(false)}
-          onConfirm={handleCreateVC}   // ✅ Important
-        />
+      <CreateVCConfirmModal
+        show={showVCConfirmModal}
+        count={selectedStudents.length}
+        students={selectedStudents}
+        onClose={() => setShowVCConfirmModal(false)}
+        onConfirm={handleCreateVC}
+      />
 
-        <ErrorModal
-          show={!!errorMessage}
-          message={errorMessage}
-          onClose={() => setErrorMessage(null)}
-        />
-        <SuccessModal
+      <ErrorModal
+        show={!!errorMessage}
+        message={errorMessage}
+        onClose={() => setErrorMessage(null)}
+      />
+
+      <SuccessModal
         show={showSuccessModal}
         vcs={successVcs}
         onClose={() => setShowSuccessModal(false)}
       />
 
+      <LoadStudentModal
+        show={showLoadStudentModal}
+        onClose={() => setShowLoadStudentModal(false)}
+        onConfirm={(filters) => {
+          console.log("🎯 Dispatching with filters:", filters);
+          dispatch(getPassingStudents(filters));
+          setShowLoadStudentModal(false);
+        }}
+      />
 
 
-      </section>
 
+
+    </section>
   );
 }
 

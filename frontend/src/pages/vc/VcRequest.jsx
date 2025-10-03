@@ -19,9 +19,10 @@ function AdminVCRequests() {
     const fetchRequests = async () => {
       setLoading(true);
       try {
-        const res = await axios.get(`${API_URL}/api/vc-requests`, {
-          headers: { Authorization: `Bearer ${user.token}` },
-        });
+      const res = await axios.get(`${API_URL}/api/vc-requests`, {
+        headers: { Authorization: `Bearer ${user.token}` },
+      });
+
         setRequests(Array.isArray(res.data) ? res.data : []);
       } catch (err) {
         console.error(err);
@@ -35,13 +36,16 @@ function AdminVCRequests() {
   }, [user]);
 
   // ✅ Open modal using URLs from backend
+// ✅ Open modal using URLs from backend
 const handleViewImages = (request) => {
   setSelectedImages({
-    face: request.faceImageUrl,
-    id: request.validIdImageUrl,
+    face: request.selfieImage?.url || "",
+    id: request.idImage?.url || "",
   });
   setShowModal(true);
 };
+
+
 
   return (
     <div className="container mt-4">
@@ -49,7 +53,7 @@ const handleViewImages = (request) => {
 
       {loading ? (
         <div className="text-center my-5">
-          <Spinner animation="border" variant="primary" />
+          <Spinner animation="border" variant="success" />
           <p>Loading requests...</p>
         </div>
       ) : error ? (
@@ -74,10 +78,10 @@ const handleViewImages = (request) => {
             {requests.map((req, idx) => (
               <tr key={req._id}>
                 <td>{idx + 1}</td>
-                <td>{req.student?.name || "N/A"}</td>
-                <td>{req.type}</td>
-                <td>{req.course}</td>
-                <td>{req.yearGraduated || "-"}</td>
+                <td>{req.personal?.fullName || "N/A"}</td>
+                <td>{req.personal?.birthPlace || "N/A"}</td>
+                <td>{req.education?.highSchool || "N/A"}</td>
+                <td>{req.education?.graduationDate || "-"}</td>
                 <td>{req.status}</td>
                 <td>{new Date(req.createdAt).toLocaleString()}</td>
                 <td>
@@ -88,6 +92,7 @@ const handleViewImages = (request) => {
               </tr>
             ))}
           </tbody>
+
         </Table>
       )}
 

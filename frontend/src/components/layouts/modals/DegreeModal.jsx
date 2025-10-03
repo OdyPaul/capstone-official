@@ -1,75 +1,89 @@
-import Spinner from "../Spinner";
-import React from "react";
+import React, { useEffect } from "react";
 
-function DegreeModal({ show, student, loading, onClose }) {
-  if (!show || !student) return null;
+function DegreeModal({ show, draft, student, loading, onClose }) {
+  useEffect(() => {
+    if (show) {
+      document.body.style.overflow = "hidden"; // 🔒 lock background scroll
+    }
+    return () => {
+      document.body.style.overflow = "auto"; // ✅ restore on close
+    };
+  }, [show]);
 
-  // Map program codes to full degree names
-  const degreeNameMap = {
-    CIVILENG: "BS Civil Engineering",
-    COMPENG: "BS Computer Engineering",
-    IT: "BS Information Technology",
-  };
-
-  const degreeName = degreeNameMap[student.program] || student.program;
+  if (!show) return null;
 
   return (
-    <div
-      className={`modal fade ${show ? "show d-block" : ""}`}
-      tabIndex="-1"
-      onClick={onClose}
-    >
+    <div className="modal fade show d-block" tabIndex="-1" role="dialog">
       <div
         className="modal-dialog modal-lg modal-dialog-centered"
-        onClick={(e) => e.stopPropagation()}
+        role="document"
       >
-        <div className="modal-content">
-          <div className="modal-header">
-            <h5 className="modal-title">Degree Certificate – {student.fullName}</h5>
-            <button type="button" className="btn-close" onClick={onClose}></button>
+        <div className="modal-content" style={{ maxHeight: "80vh" }}>
+          <div className="modal-header bg-success text-dark">
+            <h5 className="modal-title">
+              {draft?.type || "Degree"} Credential – {student?.fullName || "N/A"}
+            </h5>
+            <button
+              type="button"
+              className="btn-close"
+              aria-label="Close"
+              onClick={onClose}
+            />
           </div>
 
-          <div className="modal-body">
+          {/* 🔽 Fix height + scrollable body */}
+          <div
+            className="modal-body"
+            style={{ overflowY: "auto", maxHeight: "65vh" }}
+          >
             {loading ? (
-              <Spinner />
+              <div className="d-flex flex-column align-items-center py-5">
+                <div className="spinner-border text-primary mb-3" role="status" />
+                <p>Loading credential details...</p>
+              </div>
+            ) : draft && student ? (
+              <div className="container">
+                <div className="row mb-2">
+                  <div className="col-sm-4 fw-bold">Student Number:</div>
+                  <div className="col-sm-8">{student.studentNumber || "N/A"}</div>
+                </div>
+
+                <div className="row mb-2">
+                  <div className="col-sm-4 fw-bold">Full Name:</div>
+                  <div className="col-sm-8">{student.fullName || "N/A"}</div>
+                </div>
+
+                <div className="row mb-2">
+                  <div className="col-sm-4 fw-bold">Program:</div>
+                  <div className="col-sm-8">{student.program || "N/A"}</div>
+                </div>
+
+                <div className="row mb-2">
+                  <div className="col-sm-4 fw-bold">Credential Type:</div>
+                  <div className="col-sm-8">{draft.type || "N/A"}</div>
+                </div>
+
+                <div className="row mb-2">
+                  <div className="col-sm-4 fw-bold">Expiration:</div>
+                  <div className="col-sm-8">
+                    {draft.expiration
+                      ? new Date(draft.expiration).toLocaleDateString()
+                      : "N/A"}
+                  </div>
+                </div>
+
+                <div className="row mb-2">
+                  <div className="col-sm-4 fw-bold">Purpose:</div>
+                  <div className="col-sm-8">{draft.purpose || "N/A"}</div>
+                </div>
+              </div>
             ) : (
-              <table className="table table-bordered">
-                <tbody>
-                  <tr>
-                    <th>Student ID</th>
-                    <td>{student._id}</td>
-                  </tr>
-                  <tr>
-                    <th>Student Number</th>
-                    <td>{student.studentNumber}</td>
-                  </tr>
-                  <tr>
-                    <th>Full Name</th>
-                    <td>{student.fullName}</td>
-                  </tr>
-                  <tr>
-                    <th>Program</th>
-                    <td>{degreeName}</td>
-                  </tr>
-                  <tr>
-                    <th>Date Graduated</th>
-                    <td>{student.dateGraduated}</td>
-                  </tr>
-                  <tr>
-                    <th>GWA</th>
-                    <td>{student.gwa}</td>
-                  </tr>
-                  <tr>
-                    <th>Honors</th>
-                    <td>{student.honor || "—"}</td>
-                  </tr>
-                </tbody>
-              </table>
+              <p>No credential details available.</p>
             )}
           </div>
 
           <div className="modal-footer">
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
+            <button className="btn btn-secondary" onClick={onClose}>
               Close
             </button>
           </div>

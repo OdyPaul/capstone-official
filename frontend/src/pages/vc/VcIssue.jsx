@@ -1,205 +1,283 @@
 import React, { useState, useEffect } from "react";
-import { FaSearch, FaEye, FaTimes } from "react-icons/fa";
+import { useDispatch, useSelector } from "react-redux";
+import { FaSearch, FaEye, FaTrash } from "react-icons/fa";
+
 import TorModal from "../../components/layouts/modals/TorModal";
 import DegreeModal from "../../components/layouts/modals/DegreeModal";
-import ConfirmModal from "../../components/layouts/modals/ConfirmModal";
 import VcModal from "../../components/layouts/modals/VcModal";
-import { useDispatch, useSelector } from "react-redux";
+import LoadDraftModal from "../../components/layouts/modals/LoadDraftModal";
 import { getStudentTor } from "../../features/student/studentSlice";
-import { getDrafts } from "../../features/draft_vc/vcSlice";
+import { getDrafts, reset as resetVC } from "../../features/draft_vc/vcSlice";
 
 function VcIssue() {
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState([]);
-  const [page, setPage] = useState(1);
-  const rowsPerPage = 10;
-
   const dispatch = useDispatch();
+
   const { tor, student: vc, isLoading: loading } = useSelector(
     (state) => state.student
   );
-  const { drafts, isLoading: draftsLoading } = useSelector((state) => state.vc);
+const { drafts, isLoadingList: draftsLoading } = useSelector(
+  (state) => state.vc
+);
 
+  // 🔍 Input states
+  const [queryInput, setQueryInput] = useState("");   // typing state
+  const [appliedQuery, setAppliedQuery] = useState(""); // applied state
+
+  const [programs, setPrograms] = useState([]);
+  const [programInput, setProgramInput] = useState("All");   // dropdown selection
+  const [appliedProgram, setAppliedProgram] = useState("All"); // applied filter
+
+  // UI states
   const [selectedVC, setSelectedVC] = useState(null);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [selectedRows, setSelectedRows] = useState([]);
   const [showCredentialModal, setShowCredentialModal] = useState(false);
   const [showVCModal, setShowVCModal] = useState(false);
+  const [showLoadDraftModal, setShowLoadDraftsModal] = useState(false);
 
+  // Pagination
+  const [page, setPage] = useState(1);
+  const rowsPerPage = 10;
+
+  // cleanup on unmount
   useEffect(() => {
-    dispatch(getDrafts());
+    return () => {
+      dispatch(resetVC());
+    };
   }, [dispatch]);
 
-  const handleConfirmView = (vc) => {
-    setSelectedVC(vc);
-    setShowConfirmModal(true);
-  };
-
-  const handleViewVC = () => {
-    setShowConfirmModal(false);
-    setShowVCModal(true);
-  };
-
-  const handleViewCredential = async () => {
-    setShowConfirmModal(false);
-    if (selectedVC.type.toLowerCase() === "tor") {
-      await dispatch(getStudentTor(selectedVC.student._id));
-      setShowCredentialModal(true);
-    } else if (selectedVC.type.toLowerCase() === "degree") {
-      setShowCredentialModal(true);
+  // Collect programs dynamically
+  useEffect(() => {
+    if (drafts.length > 0) {
+      const uniquePrograms = [...new Set(drafts.map((d) => d.student?.program))];
+      setPrograms(uniquePrograms);
+    } else {
+      setPrograms([]);
     }
-  };
+  }, [drafts]);
 
   // --- Filtering + pagination ---
-  const filteredVCs = drafts.filter(
-    (vc) =>
-      vc.student?.fullName.toLowerCase().includes(search.toLowerCase()) ||
-      vc.student?.studentNumber?.toLowerCase().includes(search.toLowerCase()) ||
-      vc.type.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredVCs = drafts.filter((vc) => {
+    const fullName = vc.student?.fullName?.toLowerCase() || "";
+    const studentNumber = vc.student?.studentNumber?.toLowerCase() || "";
+    const type = vc.type?.toLowerCase() || "";
+    const program = vc.student?.program?.toLowerCase() || "";
+
+    return (
+      (appliedProgram === "All" ||
+        program === appliedProgram.toLowerCase()) &&
+      (appliedQuery === "" ||
+        fullName.includes(appliedQuery.toLowerCase()) ||
+        studentNumber.includes(appliedQuery.toLowerCase()) ||
+        type.includes(appliedQuery.toLowerCase()))
+    );
+  });
 
   const totalPages = Math.ceil(filteredVCs.length / rowsPerPage);
   const indexOfLastRow = page * rowsPerPage;
   const indexOfFirstRow = indexOfLastRow - rowsPerPage;
   const currentVCs = filteredVCs.slice(indexOfFirstRow, indexOfLastRow);
 
-  const toggleSelect = (id) => {
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
-    );
-  };
-
-  const toggleSelectAllCurrentPage = () => {
-    const currentIds = currentVCs.map((vc) => vc._id);
-    const allSelected = currentIds.every((id) => selected.includes(id));
-    if (allSelected) {
-      setSelected((prev) => prev.filter((id) => !currentIds.includes(id)));
-    } else {
-      setSelected((prev) => [...new Set([...prev, ...currentIds])]);
-    }
-  };
-
-  const handleUnselectSelected = () => {
-    setSelected([]);
-  };
-
+  // --- Handlers ---
   const handleSearch = (e) => {
     e.preventDefault();
+    setAppliedQuery(queryInput); // apply current search
     setPage(1);
   };
 
+  const handleApplyProgram = () => {
+    setAppliedProgram(programInput); // apply current dropdown
+    setPage(1);
+  };
+
+  const handleView = (vc) => {
+    setSelectedVC(vc);
+    if (vc.type?.toLowerCase() === "tor") {
+      dispatch(getStudentTor(vc.student?._id));
+      setShowCredentialModal(true);
+    } else if (vc.type?.toLowerCase() === "degree") {
+      setShowCredentialModal(true);
+    } else {
+      setShowVCModal(true);
+    }
+  };
+
+  const handleRowSelect = (id) => {
+    setSelectedRows((prev) =>
+      prev.includes(id)
+        ? prev.filter((sid) => sid !== id)
+        : [...prev, id]
+    );
+  };
+
+  const handleUnselectSelected = () => {
+    setSelectedRows([]);
+  };
+
+  const handleSelectAll = () => {
+    const currentPageIds = currentVCs.map((vc) => vc._id);
+    const allSelected = currentPageIds.every((id) =>
+      selectedRows.includes(id)
+    );
+
+    if (allSelected) {
+      setSelectedRows((prev) =>
+        prev.filter((id) => !currentPageIds.includes(id))
+      );
+    } else {
+      setSelectedRows((prev) => [
+        ...new Set([...prev, ...currentPageIds]),
+      ]);
+    }
+  };
+
   return (
-    <section className="intro">
+    <section className="intro mt-3 mb-3">
       <div className="bg-image h-100">
         <div className="mask d-flex align-items-center h-100">
           <div className="container">
             <div className="row justify-content-center">
               <div className="col-12">
-                <div
-                  className="card shadow-2-strong"
-                  style={{ backgroundColor: "#f5f7fa" }}
-                >
+                <div className="card shadow-2-strong" style={{ backgroundColor: "#f5f7fa" }}>
                   <div className="card-body">
-                    {/* Top Header Row */}
-                    <div className="row mb-3 align-items-center">
-                      <div className="col-md-9">
-                        <h5 className="mb-0 fw-bold">
-                          Verifiable Credential Issuance
-                        </h5>
-                      </div>
-                      <div className="col-md-3 text-end">
-                        <button
-                          className="btn btn-success w-50"
-                          disabled={selected.length === 0}
-                          onClick={() => alert("TODO: Issue VC logic")}
-                        >
-                          📤 Issue Selected
-                        </button>
+
+                    {/* 🏷️ Title */}
+                    <div className="row mb-3">
+                      <div className="col-12">
+                        <h5 className="mb-0 fw-bold">Verifiable Credential Issuance</h5>
                       </div>
                     </div>
 
-                    {/* Selection + Search Row */}
+                    {/* 🔝 Top Controls */}
+                      <div className="row mb-3">
+                        <div className="col-12 d-flex align-items-center">
+                          <button
+                            type="button"
+                            className="btn btn-primary me-2"
+                            onClick={() => setShowLoadDraftsModal(true)}
+                          >
+                            Load Drafts
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-warning me-2"
+                            onClick={() => {
+                              // reset all local filters + selections
+                              setQueryInput("");
+                              setAppliedQuery("");
+                              setProgramInput("All");
+                              setAppliedProgram("All");
+                              setSelectedRows([]);
+                              setPrograms([]);
+                              setPage(1);
+
+                              // reset vc redux slice
+                              dispatch(resetVC());
+                            }}
+                          >
+                            Reset Table
+                          </button>
+                        </div>
+                      </div>
+
+
+                    {/* 🔍 Filters + Search */}
                     <div className="row mb-3 align-items-center">
-                      <div className="col-md-6 d-flex align-items-center">
+                      <div className="col-md-6 d-flex">
+                        <form onSubmit={handleSearch} className="d-flex w-100">
+                          <input
+                            type="text"
+                            className="form-control me-2"
+                            placeholder="Search by name, student number, or VC type"
+                            value={queryInput}
+                            onChange={(e) => setQueryInput(e.target.value)}
+                          />
+                          <button
+                            type="submit"
+                            className="btn btn-primary d-flex align-items-center"
+                          >
+                            <FaSearch className="me-1" /> Search
+                          </button>
+                        </form>
+                      </div>
+
+                      <div className="col-md-6 d-flex justify-content-end align-items-center">
+                        <select
+                          className="form-select me-2"
+                          value={programInput}
+                          onChange={(e) => setProgramInput(e.target.value)}
+                          style={{ maxWidth: "200px" }}
+                        >
+                          <option value="All">All</option>
+                          {programs.map((prog) => (
+                            <option key={prog} value={prog}>
+                              {prog}
+                            </option>
+                          ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          className="btn btn-secondary me-2"
+                          onClick={handleApplyProgram}
+                        >
+                          Apply
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-outline-dark me-2"
+                          onClick={handleSelectAll}
+                        >
+                          ALL
+                        </button>
+
                         <button
                           type="button"
                           className="btn btn-outline-danger position-relative"
                           onClick={handleUnselectSelected}
-                          disabled={selected.length === 0}
+                          disabled={selectedRows.length === 0}
                         >
-                          <FaTimes className="me-1" />
-                          Remove
-                          {selected.length > 0 && (
+                          <FaTrash />
+                          {selectedRows.length > 0 && (
                             <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-secondary">
-                              {selected.length}
-                              <span className="visually-hidden">
-                                selected credentials
-                              </span>
+                              {selectedRows.length}
                             </span>
                           )}
                         </button>
                       </div>
-
-                      <div className="col-md-6">
-                        <form
-                          onSubmit={handleSearch}
-                          className="row g-2 justify-content-end"
-                        >
-                          <div className="col-md-6">
-                            <input
-                              type="text"
-                              className="form-control"
-                              placeholder="Search by name, student number, or VC type"
-                              value={search}
-                              onChange={(e) => setSearch(e.target.value)}
-                            />
-                          </div>
-                          <div className="col-auto">
-                            <button
-                              type="submit"
-                              className="btn btn-primary d-flex align-items-center"
-                            >
-                              <FaSearch className="me-1" /> Search
-                            </button>
-                          </div>
-                        </form>
-                      </div>
                     </div>
 
-                    {/* Table */}
+                    {/* 📊 Drafts Table */}
                     <div className="table-responsive">
                       <table className="table table-dark table-hover mb-0">
                         <thead>
                           <tr>
-                            <th>
-                              <input
-                                type="checkbox"
-                                checked={
-                                  currentVCs.length > 0 &&
-                                  currentVCs.every((vc) =>
-                                    selected.includes(vc._id)
-                                  )
-                                }
-                                onChange={toggleSelectAllCurrentPage}
-                              />
-                            </th>
+                            <th></th>
                             <th>#</th>
                             <th>Student Number</th>
                             <th>Name</th>
                             <th>Program</th>
                             <th>VC Type</th>
+                            <th>Purpose</th>
                             <th>Action</th>
                           </tr>
                         </thead>
                         <tbody>
                           {draftsLoading ? (
                             <tr>
-                              <td colSpan="7" className="text-center">
-                                Loading drafts...
+                              <td colSpan="8" className="text-center py-4">
+                                <div className="d-flex flex-column align-items-center">
+                                  <div className="spinner-border text-success mb-2" role="status">
+                                    <span className="visually-hidden">Loading...</span>
+                                  </div>
+                                  <span>Loading drafts...</span>
+                                </div>
                               </td>
                             </tr>
                           ) : currentVCs.length === 0 ? (
                             <tr>
-                              <td colSpan="7" className="text-center">
+                              <td colSpan="8" className="text-center py-4">
                                 No pending credentials found.
                               </td>
                             </tr>
@@ -207,9 +285,9 @@ function VcIssue() {
                             currentVCs.map((vc, idx) => (
                               <tr
                                 key={vc._id}
-                                onClick={() => toggleSelect(vc._id)}
+                                onClick={() => handleRowSelect(vc._id)}
                                 className={
-                                  selected.includes(vc._id)
+                                  selectedRows.includes(vc._id)
                                     ? "selected-row table-success"
                                     : "table-light"
                                 }
@@ -220,10 +298,10 @@ function VcIssue() {
                                     <input
                                       className="form-check-input"
                                       type="checkbox"
-                                      checked={selected.includes(vc._id)}
+                                      checked={selectedRows.includes(vc._id)}
                                       onChange={(e) => {
                                         e.stopPropagation();
-                                        toggleSelect(vc._id);
+                                        handleRowSelect(vc._id);
                                       }}
                                     />
                                   </div>
@@ -233,15 +311,13 @@ function VcIssue() {
                                 <td>{vc.student?.fullName || "N/A"}</td>
                                 <td>{vc.student?.program || "N/A"}</td>
                                 <td>{vc.type}</td>
+                                <td>{vc.purpose || "N/A"}</td>
                                 <td>
                                   <button
-                                    className="btn btn-info btn-sm px-3 me-2"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleConfirmView(vc);
-                                    }}
+                                    className="btn btn-info btn-sm"
+                                    onClick={() => handleView(vc)}
                                   >
-                                    <FaEye />
+                                    <FaEye /> View
                                   </button>
                                 </td>
                               </tr>
@@ -251,47 +327,27 @@ function VcIssue() {
                       </table>
                     </div>
 
-                    {/* Pagination */}
+                    {/* 📑 Pagination */}
                     <div className="row mt-3">
-                      <div className="col-md-12 text-end">
+                      <div className="col-md-12 d-flex justify-content-end">
                         <nav aria-label="Page navigation">
-                          <ul className="pagination justify-content-end mb-0">
-                            <li
-                              className={`page-item ${page === 1 && "disabled"}`}
-                            >
-                              <button
-                                className="page-link"
-                                onClick={() => setPage(Math.max(page - 1, 1))}
-                              >
+                          <ul className="pagination mb-0">
+                            <li className={`page-item ${page === 1 ? "disabled" : ""}`}>
+                              <button className="page-link" onClick={() => setPage(Math.max(page - 1, 1))}>
                                 &laquo;
                               </button>
                             </li>
+
                             {Array.from({ length: totalPages }, (_, i) => (
-                              <li
-                                key={i + 1}
-                                className={`page-item ${
-                                  page === i + 1 ? "active" : ""
-                                }`}
-                              >
-                                <button
-                                  className="page-link"
-                                  onClick={() => setPage(i + 1)}
-                                >
+                              <li key={i + 1} className={`page-item ${page === i + 1 ? "active" : ""}`}>
+                                <button className="page-link" onClick={() => setPage(i + 1)}>
                                   {i + 1}
                                 </button>
                               </li>
                             ))}
-                            <li
-                              className={`page-item ${
-                                page === totalPages && "disabled"
-                              }`}
-                            >
-                              <button
-                                className="page-link"
-                                onClick={() =>
-                                  setPage(Math.min(page + 1, totalPages))
-                                }
-                              >
+
+                            <li className={`page-item ${page === totalPages ? "disabled" : ""}`}>
+                              <button className="page-link" onClick={() => setPage(Math.min(page + 1, totalPages))}>
                                 &raquo;
                               </button>
                             </li>
@@ -307,11 +363,23 @@ function VcIssue() {
         </div>
       </div>
 
-      {/* Modals */}
+      {/* 🔹 Load Drafts Modal */}
+      <LoadDraftModal
+        show={showLoadDraftModal}
+        onClose={() => setShowLoadDraftsModal(false)}
+        onConfirm={(filters) => {
+          console.log("🎯 Load drafts with filters:", filters);
+          dispatch(getDrafts(filters));
+          setShowLoadDraftsModal(false);
+        }}
+      />
+
+      {/* TOR + Degree + VC Modals */}
       {showCredentialModal && selectedVC?.type?.toLowerCase() === "tor" && (
         <TorModal
           show={showCredentialModal}
           student={selectedVC?.student}
+          draft={selectedVC}
           tor={tor}
           loading={loading}
           onClose={() => setShowCredentialModal(false)}
@@ -322,6 +390,7 @@ function VcIssue() {
         <DegreeModal
           show={showCredentialModal}
           student={selectedVC?.student}
+          draft={selectedVC}
           loading={loading}
           onClose={() => setShowCredentialModal(false)}
         />
@@ -333,14 +402,6 @@ function VcIssue() {
         vc={selectedVC}
         loading={loading}
         onClose={() => setShowVCModal(false)}
-      />
-      <ConfirmModal
-        show={showConfirmModal}
-        student={selectedVC?.student}
-        vcType={selectedVC?.type?.toLowerCase()}
-        onClose={() => setShowConfirmModal(false)}
-        onViewVC={handleViewVC}
-        onViewCredential={handleViewCredential}
       />
     </section>
   );

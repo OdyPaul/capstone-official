@@ -2,7 +2,7 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import vcService from "./vcService";
 
-// Async thunk for creating VC drafts
+// 🔹 Create multiple VC drafts
 export const createDrafts = createAsyncThunk(
   "vc/createDrafts",
   async (drafts, thunkAPI) => {
@@ -10,7 +10,7 @@ export const createDrafts = createAsyncThunk(
       return await vcService.createDrafts(drafts);
     } catch (err) {
       const message =
-        (err.response && err.response.data && err.response.data.message) ||
+        err.response?.data?.message ||
         err.message ||
         "Failed to create VC drafts";
       return thunkAPI.rejectWithValue(message);
@@ -20,21 +20,38 @@ export const createDrafts = createAsyncThunk(
 
 export const getDrafts = createAsyncThunk(
   "vc/getDrafts",
-  async (_, thunkAPI) => {
+  async (filters, thunkAPI) => {
     try {
-      return await vcService.getDrafts();
+      const token = thunkAPI.getState().auth.user.token;
+     return await vcService.getDrafts(filters, token);
+    } catch (error) {
+      return thunkAPI.rejectWithValue(error.response?.data || error.message);
+    }
+  }
+);
+
+
+// 🔹 Delete a draft
+export const deleteDraft = createAsyncThunk(
+  "vc/deleteDraft",
+  async (id, thunkAPI) => {
+    try {
+      return await vcService.deleteDraft(id);
     } catch (err) {
       const message =
-        (err.response && err.response.data && err.response.data.message) ||
+        err.response?.data?.message ||
         err.message ||
-        "Failed to fetch VC drafts";
+        "Failed to delete VC draft";
       return thunkAPI.rejectWithValue(message);
     }
   }
 );
+
 const initialState = {
   drafts: [],
-  isLoading: false,
+  isLoadingList: false,    // for fetching drafts
+  isLoadingCreate: false,  // for creating draft(s)
+  isLoadingDelete: false,  // for deleting
   isSuccess: false,
   isError: false,
   message: "",
@@ -44,36 +61,63 @@ const vcSlice = createSlice({
   name: "vc",
   initialState,
   reducers: {
-    reset: () => initialState,
+   reset: (state) => {
+  state.isLoadingList = false
+  state.isLoadingCreate = false
+  state.isLoadingDelete = false
+  state.isSuccess = false
+  state.isError = false
+  state.message = ""
+}
   },
   extraReducers: (builder) => {
     builder
+      // 🔹 Create drafts
       .addCase(createDrafts.pending, (state) => {
-        state.isLoading = true;
+        state.isLoadingCreate = true;
         state.isError = false;
         state.isSuccess = false;
         state.message = "";
       })
       .addCase(createDrafts.fulfilled, (state, action) => {
-        state.isLoading = false;
+        state.isLoadingCreate = false;
         state.isSuccess = true;
-        state.drafts = action.payload; // saved VCs
+        state.drafts.push(action.payload); // ✅ keep old + add new
       })
       .addCase(createDrafts.rejected, (state, action) => {
-        state.isLoading = false;
+        state.isLoadingCreate = false;
         state.isError = true;
         state.message = action.payload;
       })
-       .addCase(getDrafts.pending, (state) => {
-        state.isLoading = true;
+
+      // 🔹 Get drafts
+      .addCase(getDrafts.pending, (state) => {
+        state.isLoadingList = true;
       })
       .addCase(getDrafts.fulfilled, (state, action) => {
-        state.isLoading = false;
+        state.isLoadingList = false;
         state.isSuccess = true;
         state.drafts = action.payload;
       })
       .addCase(getDrafts.rejected, (state, action) => {
-        state.isLoading = false;
+        state.isLoadingList = false;
+        state.isError = true;
+        state.message = action.payload;
+      })
+
+      // 🔹 Delete draft
+      .addCase(deleteDraft.pending, (state) => {
+        state.isLoadingDelete = true;
+      })
+      .addCase(deleteDraft.fulfilled, (state, action) => {
+        state.isLoadingDelete = false;
+        state.isSuccess = true;
+        state.drafts = state.drafts.filter(
+          (d) => d._id !== action.payload._id
+        );
+      })
+      .addCase(deleteDraft.rejected, (state, action) => {
+        state.isLoadingDelete = false;
         state.isError = true;
         state.message = action.payload;
       });

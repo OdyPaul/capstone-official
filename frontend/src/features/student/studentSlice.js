@@ -1,39 +1,36 @@
-// src/features/student/studentSlice.js
+// features/student/studentSlice.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import studentService from './studentService'
 
 const initialState = {
-  students: [],
-  student: null,
-  tor: [],
-  isLoading: false,
+  students: [],       // filtered/current list
+  allPrograms: [],    // unique programs for dropdown
+  student: null,      // single student detail
+  tor: [],            // transcript of records
+  isLoadingList: false,   // 🔹 for table (getPassingStudents)
+  isLoadingDetail: false, // 🔹 for modal/details
+  isLoadingTor: false,    // 🔹 for transcript
   isSuccess: false,
   isError: false,
   message: ''
 }
 
-// Thunks
-
-// Get all passing students
+// 🔹 Get passing students (for table)
 export const getPassingStudents = createAsyncThunk(
-  'student/getPassing',
-  async (_, thunkAPI) => {
+  "student/getPassingStudents",
+  async (filters, thunkAPI) => {
     try {
       const token = thunkAPI.getState().auth.user.token
-      return await studentService.getPassingStudents(token)
-    } catch (error) {
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString()
-      return thunkAPI.rejectWithValue(message)
+      return await studentService.getPassingStudents(filters, token)
+    } catch (err) {
+      return thunkAPI.rejectWithValue(
+        err.response?.data?.error || err.message
+      )
     }
   }
 )
 
-// Get student TOR
+// 🔹 Get transcript of records
 export const getStudentTor = createAsyncThunk(
   'student/getTor',
   async (id, thunkAPI) => {
@@ -42,9 +39,7 @@ export const getStudentTor = createAsyncThunk(
       return await studentService.getStudentTor(id, token)
     } catch (error) {
       const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
+        (error.response?.data?.message) ||
         error.message ||
         error.toString()
       return thunkAPI.rejectWithValue(message)
@@ -52,7 +47,7 @@ export const getStudentTor = createAsyncThunk(
   }
 )
 
-// Find student by ID
+// 🔹 Get one student by ID (for modal)
 export const getStudentById = createAsyncThunk(
   'student/getOne',
   async (id, thunkAPI) => {
@@ -61,28 +56,7 @@ export const getStudentById = createAsyncThunk(
       return await studentService.getStudentById(id, token)
     } catch (error) {
       const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
-        error.message ||
-        error.toString()
-      return thunkAPI.rejectWithValue(message)
-    }
-  }
-)
-
-// Search students
-export const searchStudents = createAsyncThunk(
-  'student/search',
-  async (query, thunkAPI) => {
-    try {
-      const token = thunkAPI.getState().auth.user.token
-      return await studentService.searchStudents(query, token)
-    } catch (error) {
-      const message =
-        (error.response &&
-          error.response.data &&
-          error.response.data.message) ||
+        (error.response?.data?.message) ||
         error.message ||
         error.toString()
       return thunkAPI.rejectWithValue(message)
@@ -94,66 +68,67 @@ export const studentSlice = createSlice({
   name: 'student',
   initialState,
   reducers: {
-    reset: (state) => initialState
+    reset: (state) => {
+      state.students = []
+      state.allPrograms = []
+      state.student = null
+      state.tor = []
+      state.isLoadingList = false
+      state.isLoadingDetail = false
+      state.isLoadingTor = false
+      state.isSuccess = false
+      state.isError = false
+      state.message = ''
+    }
   },
   extraReducers: (builder) => {
     builder
-      // Get Passing Students
+      // Get Passing Students (table)
       .addCase(getPassingStudents.pending, (state) => {
-        state.isLoading = true
+        state.isLoadingList = true
       })
       .addCase(getPassingStudents.fulfilled, (state, action) => {
-        state.isLoading = false
+        state.isLoadingList = false
         state.isSuccess = true
-        state.students = action.payload
+        state.students = Array.isArray(action.payload) ? action.payload : []
+
+        const newPrograms = (action.payload || []).map((s) => s.program)
+        state.allPrograms = [
+          ...new Set([...state.allPrograms, ...newPrograms])
+        ]
       })
       .addCase(getPassingStudents.rejected, (state, action) => {
-        state.isLoading = false
+        state.isLoadingList = false
         state.isError = true
         state.message = action.payload
       })
 
       // Get Student TOR
       .addCase(getStudentTor.pending, (state) => {
-        state.isLoading = true
+        state.isLoadingTor = true
       })
       .addCase(getStudentTor.fulfilled, (state, action) => {
-        state.isLoading = false
+        state.isLoadingTor = false
         state.isSuccess = true
         state.tor = action.payload
       })
       .addCase(getStudentTor.rejected, (state, action) => {
-        state.isLoading = false
+        state.isLoadingTor = false
         state.isError = true
         state.message = action.payload
       })
 
-      // Get Student by ID
+      // Get Student by ID (modal)
       .addCase(getStudentById.pending, (state) => {
-        state.isLoading = true
+        state.isLoadingDetail = true
       })
       .addCase(getStudentById.fulfilled, (state, action) => {
-        state.isLoading = false
+        state.isLoadingDetail = false
         state.isSuccess = true
         state.student = action.payload
       })
       .addCase(getStudentById.rejected, (state, action) => {
-        state.isLoading = false
-        state.isError = true
-        state.message = action.payload
-      })
-
-      // Search Students
-      .addCase(searchStudents.pending, (state) => {
-        state.isLoading = true
-      })
-      .addCase(searchStudents.fulfilled, (state, action) => {
-        state.isLoading = false
-        state.isSuccess = true
-        state.students = action.payload
-      })
-      .addCase(searchStudents.rejected, (state, action) => {
-        state.isLoading = false
+        state.isLoadingDetail = false
         state.isError = true
         state.message = action.payload
       })
