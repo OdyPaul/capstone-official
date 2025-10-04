@@ -7,7 +7,7 @@ import DegreeModal from "../../components/layouts/modals/DegreeModal";
 import VcModal from "../../components/layouts/modals/VcModal";
 import LoadDraftModal from "../../components/layouts/modals/LoadDraftModal";
 import { getStudentTor } from "../../features/student/studentSlice";
-import { getDrafts, reset as resetVC } from "../../features/draft_vc/vcSlice";
+import { getDrafts, reset as resetVC, clearDrafts  } from "../../features/draft_vc/vcSlice";
 
 function VcIssue() {
   const dispatch = useDispatch();
@@ -37,6 +37,16 @@ const { drafts, isLoadingList: draftsLoading } = useSelector(
   // Pagination
   const [page, setPage] = useState(1);
   const rowsPerPage = 10;
+
+useEffect(() => {
+  const lastFilters = localStorage.getItem("lastDraftFilters");
+  if (lastFilters) {
+    dispatch(getDrafts(JSON.parse(lastFilters)));
+  } else {
+    // no saved filters → start empty
+    dispatch(clearDrafts());
+  }
+}, [dispatch]);
 
   // cleanup on unmount
   useEffect(() => {
@@ -158,25 +168,28 @@ const { drafts, isLoadingList: draftsLoading } = useSelector(
                             Load Drafts
                           </button>
 
-                          <button
-                            type="button"
-                            className="btn btn-warning me-2"
-                            onClick={() => {
-                              // reset all local filters + selections
-                              setQueryInput("");
-                              setAppliedQuery("");
-                              setProgramInput("All");
-                              setAppliedProgram("All");
-                              setSelectedRows([]);
-                              setPrograms([]);
-                              setPage(1);
+                         <button
+                          type="button"
+                          className="btn btn-warning me-2"
+                          onClick={() => {
+                            // reset local filters + selections
+                            setQueryInput("");
+                            setAppliedQuery("");
+                            setProgramInput("All");
+                            setAppliedProgram("All");
+                            setSelectedRows([]);
+                            setPrograms([]);
+                            setPage(1);
 
-                              // reset vc redux slice
-                              dispatch(resetVC());
-                            }}
-                          >
-                            Reset Table
-                          </button>
+                            // clear drafts in Redux
+                            dispatch(clearDrafts());
+
+                            // clear saved filters in localStorage
+                            localStorage.removeItem("lastDraftFilters");
+                          }}
+                        >
+                          Reset Table
+                        </button>
                         </div>
                       </div>
 

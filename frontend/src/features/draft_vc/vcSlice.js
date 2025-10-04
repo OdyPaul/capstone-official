@@ -7,7 +7,12 @@ export const createDrafts = createAsyncThunk(
   "vc/createDrafts",
   async (drafts, thunkAPI) => {
     try {
-      return await vcService.createDrafts(drafts);
+      const token = thunkAPI.getState().auth.user.token;
+      const created = await vcService.createDrafts(drafts, token);
+
+      // ✅ Immediately refetch populated drafts after creation
+      const refreshed = await vcService.getDrafts({}, token);
+      return { created, refreshed };
     } catch (err) {
       const message =
         err.response?.data?.message ||
@@ -23,20 +28,20 @@ export const getDrafts = createAsyncThunk(
   async (filters, thunkAPI) => {
     try {
       const token = thunkAPI.getState().auth.user.token;
-     return await vcService.getDrafts(filters, token);
+      return await vcService.getDrafts(filters, token);
     } catch (error) {
       return thunkAPI.rejectWithValue(error.response?.data || error.message);
     }
   }
 );
 
-
 // 🔹 Delete a draft
 export const deleteDraft = createAsyncThunk(
   "vc/deleteDraft",
   async (id, thunkAPI) => {
     try {
-      return await vcService.deleteDraft(id);
+      const token = thunkAPI.getState().auth.user.token;
+      return await vcService.deleteDraft(id, token);
     } catch (err) {
       const message =
         err.response?.data?.message ||
@@ -49,9 +54,9 @@ export const deleteDraft = createAsyncThunk(
 
 const initialState = {
   drafts: [],
-  isLoadingList: false,    // for fetching drafts
-  isLoadingCreate: false,  // for creating draft(s)
-  isLoadingDelete: false,  // for deleting
+  isLoadingList: false,    // fetching drafts
+  isLoadingCreate: false,  // creating draft(s)
+  isLoadingDelete: false,  // deleting
   isSuccess: false,
   isError: false,
   message: "",
@@ -61,14 +66,23 @@ const vcSlice = createSlice({
   name: "vc",
   initialState,
   reducers: {
-   reset: (state) => {
-  state.isLoadingList = false
-  state.isLoadingCreate = false
-  state.isLoadingDelete = false
-  state.isSuccess = false
-  state.isError = false
-  state.message = ""
-}
+    reset: (state) => {
+      state.isLoadingList = false;
+      state.isLoadingCreate = false;
+      state.isLoadingDelete = false;
+      state.isSuccess = false;
+      state.isError = false;
+      state.message = "";
+    },
+      clearDrafts: (state) => {
+      state.drafts = [];          // 🚀 empty the table
+      state.isLoadingList = false;
+      state.isLoadingCreate = false;
+      state.isLoadingDelete = false;
+      state.isSuccess = false;
+      state.isError = false;
+      state.message = "";
+    }
   },
   extraReducers: (builder) => {
     builder
@@ -82,7 +96,9 @@ const vcSlice = createSlice({
       .addCase(createDrafts.fulfilled, (state, action) => {
         state.isLoadingCreate = false;
         state.isSuccess = true;
-        state.drafts.push(action.payload); // ✅ keep old + add new
+
+        // ✅ Use refreshed list (already populated)
+        state.drafts = action.payload.refreshed;
       })
       .addCase(createDrafts.rejected, (state, action) => {
         state.isLoadingCreate = false;
@@ -98,6 +114,10 @@ const vcSlice = createSlice({
         state.isLoadingList = false;
         state.isSuccess = true;
         state.drafts = action.payload;
+
+          // save filters for auto-reload
+      const filters = action.meta.arg || {};
+      localStorage.setItem("lastDraftFilters", JSON.stringify(filters));
       })
       .addCase(getDrafts.rejected, (state, action) => {
         state.isLoadingList = false;
@@ -112,9 +132,7 @@ const vcSlice = createSlice({
       .addCase(deleteDraft.fulfilled, (state, action) => {
         state.isLoadingDelete = false;
         state.isSuccess = true;
-        state.drafts = state.drafts.filter(
-          (d) => d._id !== action.payload._id
-        );
+        state.drafts = state.drafts.filter((d) => d._id !== action.payload._id);
       })
       .addCase(deleteDraft.rejected, (state, action) => {
         state.isLoadingDelete = false;
@@ -124,5 +142,5 @@ const vcSlice = createSlice({
   },
 });
 
-export const { reset } = vcSlice.actions;
+export const { reset ,clearDrafts } = vcSlice.actions;
 export default vcSlice.reducer;

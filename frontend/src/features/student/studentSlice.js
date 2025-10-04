@@ -96,6 +96,8 @@ export const studentSlice = createSlice({
         state.allPrograms = [
           ...new Set([...state.allPrograms, ...newPrograms])
         ]
+        const filters = action.meta.arg 
+        localStorage.setItem("lastStudentFilters", JSON.stringify(filters || {}))
       })
       .addCase(getPassingStudents.rejected, (state, action) => {
         state.isLoadingList = false

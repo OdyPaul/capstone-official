@@ -18,24 +18,20 @@ import {
 
 import storage from "redux-persist/lib/storage";
 
-// 🔑 Give each slice its own persist config
+// 🔑 Persist only the slices that must survive refresh
 const authPersistConfig = { key: "auth", storage };
-const studentPersistConfig = { key: "student", storage };
 const userPersistConfig = { key: "users", storage };
-const vcPersistConfig = { key: "vc", storage };
 
 // Wrap reducers individually
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
-const persistedStudentReducer = persistReducer(studentPersistConfig, studentReducer);
 const persistedUserReducer = persistReducer(userPersistConfig, userReducer);
-const persistedVcReducer = persistReducer(vcPersistConfig, vcReducer);  // ✅ fixed
 
 export const store = configureStore({
   reducer: {
-    auth: persistedAuthReducer,
-    student: persistedStudentReducer,
-    users: persistedUserReducer,
-    vc: persistedVcReducer,  // ✅ now persisted correctly
+    auth: persistedAuthReducer,   // ✅ keep login/session across refresh
+    student: studentReducer,      // ❌ always fresh
+    users: persistedUserReducer,  // ✅ optional: persist user list if needed
+    vc: vcReducer,                // ❌ always fresh
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

@@ -5,7 +5,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { FaSignOutAlt } from "react-icons/fa";
 import { useSelector, useDispatch } from "react-redux";
 import { logout, reset } from "../../features/auth/authSlice";
-
+import { persistor } from "../../app/store"; 
 import {
   FaChevronLeft,
   FaChevronRight,
@@ -75,11 +75,12 @@ function Sidebar() {
     }
   };
 
-  const onLogout = () => {
-    dispatch(logout());
-    dispatch(reset());
-    navigate("/login");
-  };
+const onLogout = () => {
+  dispatch(logout());
+  dispatch(reset());
+  persistor.purge();   // 🔑 clear ALL persisted slices (auth, vc, student, users)
+  navigate("/login");
+};
 
   return (
     <nav

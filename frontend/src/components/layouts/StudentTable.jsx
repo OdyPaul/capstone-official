@@ -52,22 +52,22 @@ function StudentTable() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showVCConfirmModal, setShowVCConfirmModal] = useState(false);
   const [showLoadStudentModal, setShowLoadStudentModal] = useState(false);
-const [showStudentInfoModal, setShowStudentInfoModal] = useState(false);
+  const [showStudentInfoModal, setShowStudentInfoModal] = useState(false);
   const [successVcs, setSuccessVcs] = useState([]);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // Reset VC on unmount
-  useEffect(() => {
-    return () => {
-      dispatch(resetVC());
-    };
-  }, [dispatch]);
-
 useEffect(() => {
-  // ❌ remove this reset
-  // return () => {
-  //   dispatch(reset());
-  // };
+  const saved = localStorage.getItem("lastStudentFilters");
+
+  if (saved) {
+    const lastFilters = JSON.parse(saved);
+    if (Object.keys(lastFilters).length > 0) {
+      dispatch(getPassingStudents(lastFilters));
+    }
+  } else {
+    // nothing saved → clear students
+    dispatch(reset()); // or dispatch an action that clears the student list
+  }
 }, [dispatch]);
 
 
@@ -253,7 +253,9 @@ const handleApplyProgram = () => {
                           setPrograms([]);          // clear local programs state
                           setQuery("");             // clear search box
                           setSelectedProgram("All"); // reset program filter
-                          dispatch(reset());        // clear students & redux state
+                          dispatch(reset()); 
+                                // clear students & redux state
+                                localStorage.removeItem("lastStudentFilters");
                         }}
                       >
                         Reset Table
