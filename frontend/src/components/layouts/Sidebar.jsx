@@ -120,9 +120,9 @@ const onLogout = () => {
         </div>
         {expandedMenus.vcIssue && !collapsed && (
           <>
-            <Nav.Link as={NavLink} to="/vc/viewVc" className="sidebar-link ps-5">
+            <Nav.Link as={NavLink} to="/vc/draft" className="sidebar-link ps-5">
               <FaClipboardList className="me-2 icon" />
-              <span>View Credentials</span>
+              <span>Draft</span>
             </Nav.Link>
             <Nav.Link as={NavLink} to="/vc/issue" className="sidebar-link ps-5">
               <FaClipboardList className="me-2 icon" />

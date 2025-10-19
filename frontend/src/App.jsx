@@ -11,13 +11,19 @@ import Layout from './components/layouts/Layout'
 import './App.css'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import 'bootstrap/dist/js/bootstrap.bundle.min.js'
-import ViewCredentials from './pages/vc/ViewCredentials'
-import VcIssue from './pages/vc/VcIssue'
-import VcRequest from './pages/vc/VcRequest'
+// import ViewCredentials from './pages/vc/ViewCredentials'
+// import VcIssue from './pages/vc/VcIssue'
+// import VcRequest from './pages/vc/VcRequest'
 import VerifyUsers from './pages/accounts/VerifyUsers'
+import Issue from "./pages/vc/issue"
+import Draft from "./pages/vc/draft"
+import Request from "./pages/vc/request"
+import Template from "./pages/vc/sub/template"
+
 import KeyVaults from './pages/KeyVaults'
 import Blockchain from './pages/Blockchain'
 import About from './pages/About'
+import CreateDrafts from './pages/vc/sub/createDrafts'
 
 function App() {
   return (
@@ -32,10 +38,15 @@ function App() {
           <Route path="/accounts/staff-admin" element={ <Layout> <AccountsAdminStaff /> </Layout>}/>
           <Route path="/accounts/verify-users" element={ <Layout> <VerifyUsers /> </Layout>}/>
 
+
+
           
-          <Route path='/vc/viewVc' element={<Layout><ViewCredentials/></Layout>}> </Route>
-          <Route path='/vc/issue' element={<Layout><VcIssue/></Layout>}> </Route>
-          <Route path='/vc/request' element={<Layout><VcRequest/></Layout>}> </Route>
+          <Route path='/vc/draft' element={<Layout><Draft/></Layout>}> </Route>
+          <Route path='sub/createDrafts' element={<Layout><CreateDrafts/></Layout>}> </Route>
+
+          <Route path="/sub/template" element={<Layout><Template/></Layout>} />
+          <Route path='/vc/issue' element={<Layout><Issue/></Layout>}> </Route>
+          <Route path='/vc/request' element={<Layout><Request/></Layout>}> </Route>
 
 
           <Route path='/key-vaults' element={<Layout><KeyVaults/></Layout>}> </Route>

@@ -7,7 +7,7 @@ import { useSelector,useDispatch } from "react-redux"
 const Topnav = () => {
     const {user} = useSelector((state) => state.auth)
   return (
-    <nav className="navbar navbar-expand-lg navbar-light bg-light shadow-sm sticky-top p-3">
+    <nav className="navbar navbar-expand-lg navbar-light bg-light  sticky-top p-3">
       <div className="container-fluid ">
         {/* Search Form */}
         <form className="d-flex ms-3">

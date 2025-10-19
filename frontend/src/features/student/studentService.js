@@ -11,19 +11,19 @@ const getPassingStudents = async (filters, token) => {
       qs.stringify(params, { arrayFormat: "repeat" }),
   }
 
-  const response = await axios.get(`${API_URL}/api/student/passing`, config)
+  const response = await axios.get(`${API_URL}/api/web/student/passing`, config)
   return response.data
 }
 
 const getStudentById = async (id, token) => {
   const config = { headers: { Authorization: `Bearer ${token}` } }
-  const response = await axios.get(`${API_URL}/api/student/${id}`, config)
+  const response = await axios.get(`${API_URL}/api/web/student/${id}`, config)
   return response.data
 }
 
 const getStudentTor = async (id, token) => {
   const config = { headers: { Authorization: `Bearer ${token}` } }
-  const response = await axios.get(`${API_URL}/api/student/${id}/tor`, config)
+  const response = await axios.get(`${API_URL}/api/web/student/${id}/tor`, config)
   return response.data
 }
 
