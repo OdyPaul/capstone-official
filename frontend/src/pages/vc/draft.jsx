@@ -112,7 +112,7 @@ export default function Draft() {
         <h1 className="h3 mb-0">Drafts</h1>
 
         <div className="d-flex gap-2">
-          <Button as={NavLink} to="/sub/createDrafts" variant="success">
+          <Button as={NavLink} to="/vc/sub/createDrafts" variant="success">
             {/* New button */}
             Create Drafts
           </Button>

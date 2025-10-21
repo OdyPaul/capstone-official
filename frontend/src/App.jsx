@@ -1,4 +1,4 @@
-// src/App.js
+// src/App.jsx
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { ToastContainer } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
@@ -11,19 +11,21 @@ import Layout from './components/layouts/Layout'
 import './App.css'
 import 'bootstrap/dist/css/bootstrap.min.css'
 import 'bootstrap/dist/js/bootstrap.bundle.min.js'
-// import ViewCredentials from './pages/vc/ViewCredentials'
-// import VcIssue from './pages/vc/VcIssue'
-// import VcRequest from './pages/vc/VcRequest'
-import VerifyUsers from './pages/accounts/VerifyUsers'
-import Issue from "./pages/vc/issue"
-import Draft from "./pages/vc/draft"
-import Request from "./pages/vc/request"
-import Template from "./pages/vc/sub/template"
 
+import VerifyUsers from './pages/accounts/VerifyUsers'
+
+// VC pages
+import Issue from './pages/vc/issue'
+import Draft from './pages/vc/draft'
+import Request from './pages/vc/request'
+import Template from './pages/vc/sub/template'
+import CreateDrafts from './pages/vc/sub/createDrafts'
+import DraftConfirmation from './pages/vc/sub/draftConfirmation'
+import Transactions from './pages/vc/sub/transactions'
+import PaymentConfirmation from './pages/vc/sub/confirmPayments'
 import KeyVaults from './pages/KeyVaults'
 import Blockchain from './pages/Blockchain'
 import About from './pages/About'
-import CreateDrafts from './pages/vc/sub/createDrafts'
 
 function App() {
   return (
@@ -34,30 +36,25 @@ function App() {
           <Route path="/login" element={<Login />} />
 
           {/* Routes with layout */}
-          <Route path="/" element={ <Layout> <Dashboard /> </Layout>} />
-          <Route path="/accounts/staff-admin" element={ <Layout> <AccountsAdminStaff /> </Layout>}/>
-          <Route path="/accounts/verify-users" element={ <Layout> <VerifyUsers /> </Layout>}/>
+          <Route path="/" element={<Layout><Dashboard /></Layout>} />
+          <Route path="/accounts/staff-admin" element={<Layout><AccountsAdminStaff /></Layout>} />
+          <Route path="/accounts/verify-users" element={<Layout><VerifyUsers /></Layout>} />
 
+          {/* VC routes */}
+          <Route path="/vc/draft" element={<Layout><Draft /></Layout>} />
+          <Route path="/vc/sub/createDrafts" element={<Layout><CreateDrafts /></Layout>} />
+          <Route path="/vc/sub/template" element={<Layout><Template /></Layout>} />
 
+          <Route path="/vc/issue" element={<Layout><Issue /></Layout>} />
+          <Route path="/vc/sub/draft-confirmation" element={<Layout><DraftConfirmation /></Layout>} />
+          <Route path="/vc/sub/transactions" element={<Layout><Transactions /></Layout>} />
+          <Route path="/issuance/payments" element={<Layout><PaymentConfirmation/></Layout>} />
+          <Route path="/vc/request" element={<Layout><Request /></Layout>} />
 
-          
-          <Route path='/vc/draft' element={<Layout><Draft/></Layout>}> </Route>
-          <Route path='sub/createDrafts' element={<Layout><CreateDrafts/></Layout>}> </Route>
-
-          <Route path="/sub/template" element={<Layout><Template/></Layout>} />
-          <Route path='/vc/issue' element={<Layout><Issue/></Layout>}> </Route>
-          <Route path='/vc/request' element={<Layout><Request/></Layout>}> </Route>
-
-
-          <Route path='/key-vaults' element={<Layout><KeyVaults/></Layout>}> </Route>
-
-          <Route path='/blockchain-explorer' element={<Layout><Blockchain/></Layout>}> </Route>
-
-          <Route path='/about' element={<Layout><About/></Layout>}> </Route>
-
-
-
-
+          {/* Other */}
+          <Route path="/key-vaults" element={<Layout><KeyVaults /></Layout>} />
+          <Route path="/blockchain-explorer" element={<Layout><Blockchain /></Layout>} />
+          <Route path="/about" element={<Layout><About /></Layout>} />
         </Routes>
       </Router>
       <ToastContainer />

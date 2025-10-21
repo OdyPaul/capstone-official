@@ -18,7 +18,6 @@ import {
   Alert,
   Row,
   Col,
-  Badge,
 } from "react-bootstrap";
 import { FaEye, FaArrowLeft } from "react-icons/fa";
 import {
@@ -31,7 +30,6 @@ import {
   FiTag,
 } from "react-icons/fi";
 
-
 /* ---------- helpers ---------- */
 const slugify = (s = "") =>
   s
@@ -43,61 +41,6 @@ const slugify = (s = "") =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .substring(0, 80);
-
-/**
- * Default attributes seeded from Student_Profiles.
- * Minimal: key, title, type, required, path, description
- */
-const DEFAULT_ATTRIBUTES = [
-  {
-    key: "studentId",
-    title: "Subject ID",
-    type: "string",
-    required: true,
-    path: "studentNumber",
-    description: "Student or subject identifier.",
-  },
-  {
-    key: "subjectName",
-    title: "Subject Name",
-    type: "string",
-    required: true,
-    path: "fullName",
-    description: "Full name of the student.",
-  },
-  {
-    key: "program",
-    title: "Program",
-    type: "string",
-    required: true,
-    path: "program",
-    description: "Degree program (e.g., BSIT).",
-  },
-  {
-    key: "graduationDate",
-    title: "Graduation Date",
-    type: "date",
-    required: false,
-    path: "dateGraduated",
-    description: "Date of graduation, if applicable.",
-  },
-  {
-    key: "gwa",
-    title: "GWA",
-    type: "number",
-    required: false,
-    path: "gwa",
-    description: "General Weighted Average.",
-  },
-  {
-    key: "subjects",
-    title: "Subjects (TOR rows)",
-    type: "array",
-    required: true,
-    path: "subjects",
-    description: "Array of course records (code, title, units, grade, remarks).",
-  },
-];
 
 /* Icon mapping for the attribute list */
 function AttrIcon({ attr }) {
@@ -114,7 +57,6 @@ function AttrIcon({ attr }) {
   return <FiTag />;
 }
 
-
 export default function Template() {
   const dispatch = useDispatch();
   const items = useSelector(selectTemplates);
@@ -129,12 +71,12 @@ export default function Template() {
   const [description, setDescription] = useState("");
   const [version, setVersion] = useState("1.0.0");
   const [seedDefaults, setSeedDefaults] = useState(true);
+  const [vcType, setVcType] = useState("Diploma"); // "Diploma" | "TOR"
 
-  // schema modal (viewer only)
+  // schema modal (viewer)
   const [showSchema, setShowSchema] = useState(false);
-  
   const [schemaLoading, setSchemaLoading] = useState(false);
-  const [schema, setSchema] = useState(null); // { name, slug, version, lastUpdated, attributes: [] }
+  const [schema, setSchema] = useState(null); // { name, slug, version, lastUpdated, attributes: [], derivedKind }
 
   useEffect(() => {
     dispatch(getTemplates({}));
@@ -150,12 +92,16 @@ export default function Template() {
   const onCreate = async (e) => {
     e.preventDefault();
 
+    // 👉 Let the BACKEND seed attributes based on vc.type + seedDefaults
+    //    Do NOT send any client-side defaults.
     const payload = {
       name: name.trim(),
       slug: slug.trim(),
       description: description.trim(),
       version: version.trim() || "1.0.0",
-      attributes: seedDefaults ? DEFAULT_ATTRIBUTES : [],
+      vc: { type: ["VerifiableCredential", vcType] },
+      seedDefaults, // backend will use getDefaults("tor"|"diploma") based on vc.type
+      // attributes: []  // optional; omit entirely
     };
 
     const res = await dispatch(createTemplate(payload));
@@ -166,6 +112,7 @@ export default function Template() {
       setDescription("");
       setVersion("1.0.0");
       setSeedDefaults(true);
+      setVcType("Diploma");
     }
   };
 
@@ -179,7 +126,8 @@ export default function Template() {
     setSchema(null);
     setSchemaLoading(true);
     try {
-      const data = await templateService.getTemplatePreview(tplId, token); // GET /:id/preview
+      // Shows DB-backed attributes via /preview
+      const data = await templateService.getTemplatePreview(tplId, token);
       const attrs = Array.isArray(data?.attributes) ? data.attributes : [];
       const sorted = [...attrs].sort((a, b) =>
         (a.title || "").localeCompare(b.title || "")
@@ -202,7 +150,6 @@ export default function Template() {
       {/* Header with Back + Title + New */}
       <div className="d-flex align-items-center justify-content-between mb-3">
         <div className="d-flex align-items-center gap-2">
-          {/* CHANGE the `to` path if your Draft route differs */}
           <Button as={NavLink} to="/vc/draft" variant="outline-secondary">
             <FaArrowLeft className="me-2" />
             Back to Drafts
@@ -279,18 +226,19 @@ export default function Template() {
           <Modal.Header closeButton>
             <Modal.Title>New Template</Modal.Title>
           </Modal.Header>
-        <Modal.Body>
+          <Modal.Body>
             <Row className="g-3">
               <Col xs={12}>
                 <Form.Label>Name</Form.Label>
                 <Form.Control
                   type="text"
-                  placeholder="e.g. University Transcript (TOR)"
+                  placeholder="e.g. Diploma or Transcript of Records"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
                 />
               </Col>
+
               <Col xs={12}>
                 <Form.Label>Slug (auto)</Form.Label>
                 <Form.Control type="text" value={slug} readOnly />
@@ -298,6 +246,7 @@ export default function Template() {
                   Generated from name. Used in URLs and identifiers.
                 </Form.Text>
               </Col>
+
               <Col xs={12}>
                 <Form.Label>Description</Form.Label>
                 <Form.Control
@@ -308,6 +257,7 @@ export default function Template() {
                   onChange={(e) => setDescription(e.target.value)}
                 />
               </Col>
+
               <Col xs={12} md={6}>
                 <Form.Label>Version</Form.Label>
                 <Form.Control
@@ -318,16 +268,30 @@ export default function Template() {
                 />
               </Col>
 
+              <Col xs={12} md={6}>
+                <Form.Label>VC Type</Form.Label>
+                <Form.Select
+                  value={vcType}
+                  onChange={(e) => setVcType(e.target.value)}
+                >
+                  <option value="Diploma">Diploma</option>
+                  <option value="TOR">TOR</option>
+                </Form.Select>
+                <Form.Text className="text-muted">
+                  This sets <code>vc.type</code> (e.g. <code>["VerifiableCredential","Diploma"]</code>) so the backend can seed attributes.
+                </Form.Text>
+              </Col>
+
               <Col xs={12}>
                 <Form.Check
                   type="checkbox"
                   id="seed-defaults"
-                  label="Seed with common Student fields (recommended)"
+                  label="Seed recommended attributes on the server"
                   checked={seedDefaults}
                   onChange={(e) => setSeedDefaults(e.target.checked)}
                 />
                 <Form.Text className="text-muted">
-                  This will add fields like Subject ID, Subject Name, Program, Graduation Date, GWA, and Subjects.
+                  When enabled, the backend seeds fields based on VC Type (Diploma or TOR).
                 </Form.Text>
               </Col>
             </Row>
@@ -350,7 +314,7 @@ export default function Template() {
         </Form>
       </Modal>
 
-      {/* Schema Viewer Modal (LIST style like your Image 1) */}
+      {/* Schema Viewer Modal (DB-backed attributes) */}
       <Modal
         show={showSchema}
         onHide={() => setShowSchema(false)}
@@ -371,7 +335,7 @@ export default function Template() {
           ) : Array.isArray(schema?.attributes) && schema.attributes.length > 0 ? (
             <div className="px-1">
               <div className="text-uppercase small fw-bold text-muted mb-3">
-                Attributes
+                Attributes {schema?.derivedKind ? <span className="ms-1">({schema.derivedKind})</span> : null}
               </div>
 
               <div className="border rounded">
@@ -388,6 +352,10 @@ export default function Template() {
                       <div className="text-muted small">
                         {a.description || "—"}
                       </div>
+                      <div className="text-muted small">
+                        <code>{a.key}</code> • {a.type}{a.required ? " • required" : ""}
+                        {a.path ? <> • path: <code>{a.path}</code></> : null}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -397,7 +365,7 @@ export default function Template() {
             <div className="text-center py-4 border rounded">
               <div className="h6 mb-2">No attributes defined for this template.</div>
               <p className="text-muted mb-0">
-                Create a template with default fields, or update this template via PUT to <code>/api/web/template/:id</code>.
+                Create with seeding enabled, or update this template via PUT to <code>/api/web/templates/:id</code>.
               </p>
             </div>
           )}

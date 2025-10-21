@@ -5,6 +5,7 @@ import userReducer from "../features/users/userSlice";
 import studentReducer from "../features/student/studentSlice";
 import vcReducer from "../features/draft_vc/vcSlice";
 import templateReducer from "../features/template/templateSlice"
+import issuanceReducer from '../features/issuance/issuanceSlice'
 
 import {
   persistStore,
@@ -33,7 +34,8 @@ export const store = configureStore({
     student: studentReducer,      // ❌ always fresh
     users: persistedUserReducer,  // ✅ optional: persist user list if needed
     vc: vcReducer,  
-    template:templateReducer,              // ❌ always fresh
+    template:templateReducer,  
+    issuance: issuanceReducer,            // ❌ always fresh
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
