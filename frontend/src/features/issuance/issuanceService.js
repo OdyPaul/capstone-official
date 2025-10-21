@@ -60,6 +60,24 @@ const createPaymentRequest = async (payload, token) => {
   return data;
 };
 
+
+const listIssuedVCs = async (filters, token) => {
+  const config = {
+    headers: { Authorization: `Bearer ${token}` },
+    params: filters || {},
+    paramsSerializer: paramsSer,
+  };
+  const { data } = await axios.get(`${API_URL}/api/web/vc/signed`, config);
+  return data;
+};
+
+const ensureClaimForVC = async (credId, opts = {}, token) => {
+  const payload = { credId, singleActive: true, ...(opts || {}) };
+  const config = { headers: { Authorization: `Bearer ${token}` } };
+  const { data } = await axios.post(`${API_URL}/api/web/claims`, payload, config);
+  return data; // { token, claim_url, expires_at, reused }
+};
+
 const issuanceService = {
   listPayments,
   listPendingPayments,      // ⬅️ NEW
@@ -67,6 +85,8 @@ const issuanceService = {
   issueDraft,
   markPaidByTxNo,
   createPaymentRequest,
+  listIssuedVCs,
+  ensureClaimForVC,
 };
 
 export default issuanceService;

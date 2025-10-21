@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import issuanceService from "./issuanceService";
 
+
 const msg = (err) =>
   err?.response?.data?.message ||
   err?.response?.data ||
@@ -88,6 +89,36 @@ export const loadTransactions = createAsyncThunk(
   }
 );
 
+export const loadIssuedVCs = createAsyncThunk(
+  "issuance/loadIssuedVCs",
+  async (filters, thunkAPI) => {
+    try {
+      const token = thunkAPI.getState().auth.user.token;
+      return await issuanceService.listIssuedVCs(filters || {}, token);
+    } catch (e) {
+      return thunkAPI.rejectWithValue(
+        e?.response?.data?.message || e?.message || "Request failed"
+      );
+    }
+  }
+);
+
+export const openClaimQrForVC = createAsyncThunk(
+  "issuance/openClaimQrForVC",
+  async ({ credId }, thunkAPI) => {
+    try {
+      const token = thunkAPI.getState().auth.user.token;
+      const r = await issuanceService.ensureClaimForVC(credId, {}, token);
+      return { credId, ...r }; // { credId, token, claim_url, expires_at, reused }
+    } catch (e) {
+      return thunkAPI.rejectWithValue(
+        e?.response?.data?.message || e?.message || "Request failed"
+      );
+    }
+  }
+);
+
+
 const initialState = {
   issuable: [],          // array of payments (status=paid, unused)
   pending: [],           // 🔹 NEW — pending payments for confirmation page
@@ -100,6 +131,9 @@ const initialState = {
   isIssuing: false,
   isLoadingTx: false,
   lastIssueResults: null,
+  issuedVCs: [],
+  isLoadingIssued: false,
+  claimModal: { open: false, credId: null, claim_url: null, token: null, expires_at: null, reused: false, error: null },
 
   isError: false,
   message: "",
@@ -130,6 +164,9 @@ const issuanceSlice = createSlice({
     },
     clearSelected: (s) => {
       s.selected = [];
+    },
+        closeClaimModal: (s) => {
+      s.claimModal = { open: false, credId: null, claim_url: null, token: null, expires_at: null, reused: false, error: null };
     },
   },
   extraReducers: (b) => {
@@ -213,11 +250,31 @@ const issuanceSlice = createSlice({
         s.isMarkingPaid = false;
         s.isError = true;
         s.message = a.payload;
+      })
+       .addCase(loadIssuedVCs.pending, (s) => {
+        s.isLoadingIssued = true;
+      })
+      .addCase(loadIssuedVCs.fulfilled, (s, a) => {
+        s.isLoadingIssued = false;
+        s.issuedVCs = a.payload || [];
+      })
+      .addCase(loadIssuedVCs.rejected, (s, a) => {
+        s.isLoadingIssued = false;
+      })
+      .addCase(openClaimQrForVC.pending, (s) => {
+        s.claimModal = { open: true, credId: null, claim_url: null, token: null, expires_at: null, reused: false, error: null };
+      })
+      .addCase(openClaimQrForVC.fulfilled, (s, a) => {
+        const r = a.payload || {};
+        s.claimModal = { open: true, credId: r.credId, claim_url: r.claim_url, token: r.token, expires_at: r.expires_at, reused: !!r.reused, error: null };
+      })
+      .addCase(openClaimQrForVC.rejected, (s, a) => {
+        s.claimModal = { open: true, credId: null, claim_url: null, token: null, expires_at: null, reused: false, error: a.payload || "Failed to open QR" };
       });
   },
 });
 
-export const { resetIssuance, setSelected, toggleSelect, clearSelected } =
+export const { resetIssuance, setSelected, toggleSelect, clearSelected,closeClaimModal, } =
   issuanceSlice.actions;
 
 export default issuanceSlice.reducer;

@@ -134,6 +134,11 @@ const onLogout = () => {
             </Nav.Link>
           </>
         )}
+        {/* Registry */}
+        <Nav.Link as={NavLink} to="/registry/issuedVc" className="sidebar-link p-3">
+          <FaKey className="me-3 icon" />
+          <span className="hide-on-collapse">Registry</span>
+        </Nav.Link>
 
         {/* Accounts */}
         <div

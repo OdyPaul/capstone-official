@@ -26,6 +26,7 @@ import PaymentConfirmation from './pages/vc/sub/confirmPayments'
 import KeyVaults from './pages/KeyVaults'
 import Blockchain from './pages/Blockchain'
 import About from './pages/About'
+import IssuedVc from './pages/registry/issuedVc'
 
 function App() {
   return (
@@ -46,10 +47,13 @@ function App() {
           <Route path="/vc/sub/template" element={<Layout><Template /></Layout>} />
 
           <Route path="/vc/issue" element={<Layout><Issue /></Layout>} />
-          <Route path="/vc/sub/draft-confirmation" element={<Layout><DraftConfirmation /></Layout>} />
+          <Route path="/vc/sub/draftConfirmation" element={<Layout><DraftConfirmation /></Layout>} />
           <Route path="/vc/sub/transactions" element={<Layout><Transactions /></Layout>} />
           <Route path="/issuance/payments" element={<Layout><PaymentConfirmation/></Layout>} />
           <Route path="/vc/request" element={<Layout><Request /></Layout>} />
+
+           {/* Regirtry */}
+          <Route path="/registry/issuedVc" element={<Layout><IssuedVc /></Layout>} />
 
           {/* Other */}
           <Route path="/key-vaults" element={<Layout><KeyVaults /></Layout>} />

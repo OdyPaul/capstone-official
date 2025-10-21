@@ -32,7 +32,7 @@ export default function DraftConfirmation() {
   return (
     <section className="container py-4">
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <Button as={NavLink} to="/vc/issuance" variant="outline-secondary">
+        <Button as={NavLink} to="/vc/issue" variant="outline-secondary">
           <FaArrowLeft className="me-2" />
           Back
         </Button>
