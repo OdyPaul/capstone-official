@@ -1,103 +1,59 @@
+// src/components/layouts/Header.jsx
 import React from 'react'
-import { FaUser, FaBell, FaCog, FaUserCircle, FaLock, FaEnvelopeOpenText, FaBoxOpen } from 'react-icons/fa'
-import { useSelector,useDispatch } from "react-redux"
-
-
+import { FaUser, FaBell, FaCog, FaUserCircle, FaLock } from 'react-icons/fa'
+import { useSelector } from "react-redux"
+import "./css/header.css"
 
 const Topnav = () => {
-    const {user} = useSelector((state) => state.auth)
+  const { user } = useSelector((state) => state.auth)
+
   return (
-    <nav className="navbar navbar-expand-lg navbar-light bg-light  sticky-top p-3">
-      <div className="container-fluid ">
-        {/* Search Form */}
-        <form className="d-flex ms-3">
-          <input className="form-control me-2" type="search" placeholder="Search" aria-label="Search" />
-          <button className="btn btn-outline-dark mx-3" type="submit">
-            Search
-          </button>
-        </form>
+    <nav className="navbar bg-light sticky-top px-4 py-2 topbar">
+      {/* Left: Search */}
+      <form className="d-flex align-items-center" role="search" style={{ maxWidth: 360 }}>
+        <input className="form-control form-control-sm me-2" type="search" placeholder="Search" aria-label="Search" />
+        <button className="btn btn-outline-secondary btn-sm" type="submit">Search</button>
+      </form>
 
-        {/* Right Side */}
-        <div className="collapse navbar-collapse" id="navbarContent">
-          <ul className="navbar-nav ms-auto mb-2 mb-lg-0">
+      {/* Right: ONE user icon with dropdown */}
+      <div className="ms-auto dropdown">
+        <button
+          className="icon-btn dropdown-toggle"
+          id="userMenu"
+          data-bs-toggle="dropdown"
+          aria-expanded="false"
+          aria-label="Open user menu"
+          type="button"
+        >
+          <FaUser size={18} />
+        </button>
 
-            {/* User Dropdown */}
-            <li className="nav-item dropdown mx-2">
-              <button
-                className="btn btn-light border-0 dropdown-toggle"
-                id="userDropdown"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                <FaUser size={20} />
-              </button>
-              <ul className="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                <li className="dropdown-item fw-bold text-primary">
-                  <FaUserCircle className="me-2" />
-                  {user ? `${user.role} | ${user.name}` : "Staff | Guest"}
-                </li>
-                <li><hr className="dropdown-divider" /></li>
-                <li className="dropdown-item">
-                  <FaUserCircle className="me-2" />
-                  My Profile
-                </li>
-                <li className="dropdown-item">
-                  <FaLock className="me-2" />
-                  Logout
-                </li>
-                <li className="dropdown-item">
-                  <FaCog className="me-2" />
-                  Settings
-                </li>
-              </ul>
-            </li>
+        <ul className="dropdown-menu dropdown-menu-end shadow" aria-labelledby="userMenu">
+          <li className="dropdown-item-text text-muted small px-3">
+            <FaUserCircle className="me-2" />
+            {user ? `${user.role} | ${user.name}` : "Staff | Guest"}
+          </li>
+          <li><hr className="dropdown-divider" /></li>
 
-            {/* Notifications Dropdown */}
-            <li className="nav-item dropdown mx-2">
-              <button
-                className="btn btn-light border-0 dropdown-toggle"
-                id="notificationsDropdown"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                <FaBell size={20} />
-              </button>
-              <ul className="dropdown-menu dropdown-menu-end" aria-labelledby="notificationsDropdown">
-                <li className="dropdown-item">
-                  <FaEnvelopeOpenText className="me-2" />
-                  New message received
-                </li>
-                <li className="dropdown-item">
-                  <FaBoxOpen className="me-2" />
-                  Order shipped
-                </li>
-              </ul>
-            </li>
+          {/* Optional: a simple notifications entry instead of a separate bell */}
+          <li>
+            <button className="dropdown-item d-flex align-items-center" type="button">
+              <FaBell className="me-2" /> Notifications
+            </button>
+          </li>
 
-            {/* Settings Dropdown */}
-            <li className="nav-item dropdown mx-2">
-              <button
-                className="btn btn-light border-0 dropdown-toggle"
-                id="settingsDropdown"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                <FaCog size={20} />
-              </button>
-              <ul className="dropdown-menu dropdown-menu-end" aria-labelledby="settingsDropdown">
-                <li className="dropdown-item">
-                  <FaCog className="me-2" />
-                  Profile Settings
-                </li>
-                <li className="dropdown-item">
-                  <FaLock className="me-2" />
-                  Logout
-                </li>
-              </ul>
-            </li>
+          <li>
+            <button className="dropdown-item d-flex align-items-center" type="button">
+              <FaCog className="me-2" /> Profile Settings
+            </button>
+          </li>
 
-          </ul>
-        </div>
+          <li>
+            <button className="dropdown-item d-flex align-items-center" type="button">
+              <FaLock className="me-2" /> Logout
+            </button>
+          </li>
+        </ul>
       </div>
     </nav>
   )

@@ -1,47 +1,62 @@
-import axios from 'axios'
+// src/features/auth/authService.js
+import axios from 'axios';
 import { API_URL } from '../../../config';
 
+const LS_KEY = 'user';
+const allowedRoles = ['admin', 'staff', 'developer'];
 
+const getStoredUser = () => {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)); } catch { return null; }
+};
+const setStoredUser = (u) => localStorage.setItem(LS_KEY, JSON.stringify(u));
+const clearStoredUser = () => localStorage.removeItem(LS_KEY);
 
-//Register user
-const register = async(userData) =>{
-    const response = await axios.post(`${API_URL}/api/web/users`, userData)
+// export if other modules need it
+export const getToken = () => getStoredUser()?.token || null;
 
-    if(response.data){
-        console.log(response.data)
-        localStorage.setItem('user', JSON.stringify(response.data))
-    }
-    return response.data
-}
-
-// Login user
-const login = async (userData) => {
-  const response = await axios.post(`${API_URL}/api/web/users/login`, userData);
-
-  if (response.data) {
-    const allowedRoles = ["admin", "staff", "developer"];
-
-    if (allowedRoles.includes(response.data.role)) {
-      localStorage.setItem("user", JSON.stringify(response.data)); // ✅ save here only
-      return response.data;
-    } else {
-      throw new Error("Unauthorized role: only admin, staff, or developer can log in.");
-    }
+// ----- Register (web/admin) -----
+const register = async (userData) => {
+  const { data } = await axios.post(`${API_URL}/api/web/users`, userData);
+  // If backend returns a token + role, only persist if role is allowed
+  if (data?.token && allowedRoles.includes(data.role)) {
+    setStoredUser(data);
   }
-  return null;
+  return data;
 };
 
+// ----- Login -----
+const login = async (userData) => {
+  const { data } = await axios.post(`${API_URL}/api/web/users/login`, userData);
+  if (!data) return null;
 
+  if (!allowedRoles.includes(data.role)) {
+    throw new Error('Unauthorized role: only admin, staff, or developer can log in.');
+  }
+  setStoredUser(data);
+  return data;
+};
 
-//Logout
-const logout = () =>{
-    localStorage.removeItem('user')
-}
+// ----- Logout (calls backend + clears client) -----
+const logout = async () => {
+  const token = getToken();
+  try {
+    if (token) {
+      await axios.post(
+        `${API_URL}/api/web/users/logout`,
+        null,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    }
+  } catch {
+    // ignore API/network errors; still clear local state
+  } finally {
+    clearStoredUser();
+  }
+};
 
-const authService = {
-    register,
-    logout,
-    login
-}
-
-export default authService
+export default {
+  register,
+  login,
+  logout,
+  getToken,
+};

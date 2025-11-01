@@ -133,7 +133,7 @@ const initialState = {
   lastIssueResults: null,
   issuedVCs: [],
   isLoadingIssued: false,
-  claimModal: { open: false, credId: null, claim_url: null, token: null, expires_at: null, reused: false, error: null },
+  claimModal: { open: false, credId: null, claim_id: null, claim_url: null, token: null, expires_at: null, reused: false, error: null },
 
   isError: false,
   message: "",
@@ -266,7 +266,7 @@ const issuanceSlice = createSlice({
       })
       .addCase(openClaimQrForVC.fulfilled, (s, a) => {
         const r = a.payload || {};
-        s.claimModal = { open: true, credId: r.credId, claim_url: r.claim_url, token: r.token, expires_at: r.expires_at, reused: !!r.reused, error: null };
+        s.claimModal = { open: true, credId: r.credId, claim_id: r.claim_id, claim_url: r.claim_url, token: r.token, expires_at: r.expires_at, reused: !!r.reused, error: null };
       })
       .addCase(openClaimQrForVC.rejected, (s, a) => {
         s.claimModal = { open: true, credId: null, claim_url: null, token: null, expires_at: null, reused: false, error: a.payload || "Failed to open QR" };

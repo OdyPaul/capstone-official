@@ -1,127 +1,170 @@
-:root {
-  --sidebar-width: 280px;
-  --sidebar-width-collapsed: 80px;
+/* ==== Vars ==== */
+:root{
+  --sidebar-width:280px;
+  --sidebar-width-collapsed:80px;
+  --anim-fast:.14s;
+  --anim-med:.22s;
+  --anim-slow:.28s;
+  --easing:cubic-bezier(.2,.8,.2,1);
 }
 
-/* basic page */
-body {
+/* Window doesn't scroll; main-content will */
+html, body { height: 100%; overflow: hidden; }
+
+/* Layout spacing + make main the scroll container */
+.main-content{
+  margin-left:var(--sidebar-width);
+  height: 100vh;                 /* scroll box height */
+  overflow-y: auto;              /* <-- only this scrolls */
   overflow-x: hidden;
+  background:#f8f9fa;
+  transition:margin-left var(--anim-med) var(--easing) .02s;
+  -webkit-overflow-scrolling: touch;   /* smoother on iOS */
+  overscroll-behavior-y: contain;      /* avoids page bounce */
+}
+@supports (height: 100dvh) {
+  .main-content { height: 100dvh; }    /* mobile address bar safe */
 }
 
-/* sidebar container */
-.sidebar {
-  width: var(--sidebar-width);
-  height: 100vh;
-  background: linear-gradient(135deg, #1a1c2e 0%, #16181f 100%);
-  transition: width 0.28s cubic-bezier(.2,.8,.2,1);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
- 
+.sidebar.collapsed ~ .main-content{
+  margin-left:var(--sidebar-width-collapsed);
+  transition:margin-left var(--anim-med) var(--easing) 0s;
 }
 
-/* collapsed width */
-.sidebar.collapsed {
-  width: var(--sidebar-width-collapsed);
+/* Sidebar fixed + no own scroll */
+.sidebar{
+  position:fixed; left:0; top:0; z-index:1030;
+  width:var(--sidebar-width); height:100vh;
+  background:linear-gradient(135deg,#1a1c2e 0%,#16181f 100%);
+  transition:width var(--anim-med) var(--easing);
+
+  overflow-y: hidden;           /* <-- no vertical scrollbar */
+  overflow-x: hidden;          /* <-- let rail tooltips escape */
+
+  display:flex; flex-direction:column;
+
+  --bs-link-color:#a0a3bd; --bs-link-hover-color:#fff;
+  --bs-nav-link-color:#a0a3bd; --bs-nav-link-hover-color:#fff;
+}
+@supports (height: 100dvh) {
+  .sidebar { height: 100dvh; }
+}
+.sidebar.collapsed{ width:var(--sidebar-width-collapsed); }
+
+/* Links */
+.sidebar-link{
+  position:relative;
+  color:#a0a3bd; border-radius:8px; margin:6px 12px;
+  display:flex; align-items:center; gap:12px;
+  white-space:nowrap; overflow:hidden;
+  padding:.6rem .8rem;
+  transition:background .2s ease, transform .15s ease;
+}
+.sidebar-link .icon{ flex:0 0 auto; width:22px; text-align:center; }
+.sidebar-link:hover{ color:#fff; background:rgba(255,255,255,.06); transform:translateX(4px); }
+.sidebar.collapsed .sidebar-link{ overflow:visible; } /* tooltips */
+
+/* Smooth label animation */
+.hide-on-collapse{
+  display:inline-block; overflow:hidden; max-width:220px;
+  opacity:1; transform:translateX(0);
+  transition:
+    opacity var(--anim-med) ease .03s,
+    transform var(--anim-med) var(--easing) .03s,
+    max-width var(--anim-slow) var(--easing) .05s;
+  will-change:max-width,opacity,transform;
+}
+.sidebar.collapsed .hide-on-collapse{
+  max-width:0; opacity:0; transform:translateX(-8px); pointer-events:none;
+  transition:
+    opacity .10s ease 0s,
+    transform .16s var(--easing) 0s,
+    max-width .16s var(--easing) 0s;
 }
 
-/* links: use flex so icon + text align */
-.sidebar-link {
-  color: #a0a3bd;
-  border-radius: 8px;
-  margin: 6px 12px;
+/* Collapsed rail tooltip (uses data-label) */
+.sidebar.collapsed .sidebar-link[data-label]::after{
+  content:attr(data-label);
+  position:absolute; left:calc(100% + 8px); top:50%;
+  transform:translateY(-50%) translateX(-6px);
+  background:#11131a; color:#fff; padding:6px 10px; border-radius:8px;
+  font-size:.875rem; white-space:nowrap; opacity:0; pointer-events:none;
+  box-shadow:0 6px 20px rgba(0,0,0,.25);
+  transition:opacity var(--anim-fast) ease, transform var(--anim-med) var(--easing);
+  z-index:1050;
+}
+.sidebar.collapsed .sidebar-link[data-label]:hover::after,
+.sidebar.collapsed .sidebar-link[data-label]:focus::after{
+  opacity:1; transform:translateY(-50%) translateX(0);
+}
+
+/* Branding */
+.logo-text{
+  background:linear-gradient(45deg,#6b8cff,#8b9fff);
+  background-clip:text; -webkit-background-clip:text;
+  color:transparent; -webkit-text-fill-color:transparent;
+  transition:opacity var(--anim-med) var(--easing), transform var(--anim-med) var(--easing);
+}
+.sidebar-sub{ margin:4px 0 0; font-size:.85rem; color:#9aa0c5; }
+.sidebar.collapsed .logo-text,
+.sidebar.collapsed .sidebar-sub{ opacity:0; transform:translateX(-6px); pointer-events:none; }
+
+/* Header layering (sticky header inside .main-content will stick) */
+.navbar.sticky-top{ z-index:1040; }
+.dropdown-menu{ z-index:2000; }
+
+/* === Logout CTA (animated, theme-matched) === */
+.logout-cta{
+  margin: 12px;
+  border-radius: 10px;
+  padding: .6rem .8rem;
+  width: calc(100% - 24px);
   display: flex;
   align-items: center;
   gap: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  padding: 0.6rem 0.8rem;
-  transition: background 0.2s ease, transform 0.15s ease;
-}
 
-/* clickable non-Nav.Link items */
-.sidebar-link.clickable {
+  background: rgba(239, 68, 68, 0.12);   /* rose on dark gradient */
+  border: 1px solid rgba(239, 68, 68, 0.22);
+  color: #fca5a5;                        /* soft rose text */
   cursor: pointer;
+
+  transition:
+    background var(--anim-med) var(--easing),
+    border-color var(--anim-med) var(--easing),
+    transform .18s var(--easing),
+    box-shadow .22s var(--easing);
 }
 
-/* icon spacing helper in case bootstrap class differs */
-.sidebar-link .icon {
-  flex: 0 0 auto;
-  width: 22px;
-  text-align: center;
+.logout-cta:hover{
+  background: rgba(239, 68, 68, 0.18);
+  border-color: rgba(239, 68, 68, 0.35);
+  transform: translateX(4px) scale(1.02);
+  box-shadow: 0 10px 28px rgba(239, 68, 68, 0.15);
 }
 
-/* hover */
-.sidebar-link:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.06);
-  transform: translateX(4px);
+.logout-icon{
+  transition: transform .22s var(--easing);
+}
+.logout-cta:hover .logout-icon{
+  transform: rotate(-12deg);
 }
 
-/* active */
-.sidebar-link.active {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
+/* Collapsed rail tooltip still works (data-label already present) */
+.sidebar.collapsed .logout-cta{
+  width: auto;          /* keep natural width when collapsed */
+  padding: .6rem .8rem;
+  overflow: visible;    /* allow tooltip to escape */
 }
 
-/* text that hides on collapse */
-.hide-on-collapse {
-  display: inline-block;
-  opacity: 1;
-  transform: translateX(0);
-  transition: opacity 0.22s ease, transform 0.22s ease;
+/* Modal theming (optional but nice) */
+.logout-modal .modal-header .btn-close{
+  filter: invert(0.6);
 }
-
-/* When the parent .sidebar has .collapsed, hide text smoothly */
-.sidebar.collapsed .hide-on-collapse {
-  opacity: 0;
-  transform: translateX(-8px);
-  pointer-events: none;
+.btn-logout{
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: #fff;
+  border: 0;
 }
-
-/* logo */
-.logo-text {
-  background: linear-gradient(45deg, #6b8cff, #8b9fff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  transition: opacity 0.22s ease;
-}
-
-/* small subtitle under logo */
-.sidebar-sub {
-  margin: 4px 0 0 0;
-  font-size: 0.85rem;
-  color: #9aa0c5;
-  transition: opacity 0.22s ease, transform 0.22s ease;
-}
-
-/* hide logo/sub when collapsed */
-.sidebar.collapsed .logo-text,
-.sidebar.collapsed .sidebar-sub {
-  opacity: 0;
-  transform: translateX(-6px);
-  pointer-events: none;
-}
-
-/* profile / bottom area */
-.profile-info {
-  transition: opacity 0.22s ease;
-}
-
-.sidebar.collapsed .profile-info {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* notification badge (optional) */
-.notification-badge {
-  background: #ff6b6b;
-  padding: 2px 6px;
-  border-radius: 6px;
-  font-size: 0.7rem;
-  transition: opacity 0.22s ease;
-}
-
-.sidebar.collapsed .notification-badge {
-  opacity: 0;
+.btn-logout:hover{
+  filter: brightness(1.05);
 }

@@ -75,7 +75,7 @@ const ensureClaimForVC = async (credId, opts = {}, token) => {
   const payload = { credId, singleActive: true, ...(opts || {}) };
   const config = { headers: { Authorization: `Bearer ${token}` } };
   const { data } = await axios.post(`${API_URL}/api/web/claims`, payload, config);
-  return data; // { token, claim_url, expires_at, reused }
+  return data; // { claim_id, token, claim_url, expires_at, reused }
 };
 
 const issuanceService = {

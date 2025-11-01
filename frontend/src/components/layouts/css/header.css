@@ -1,0 +1,18 @@
+/* Topbar */
+.topbar { z-index:1040; }
+
+/* Fixed-size icon button (prevents layout shift) */
+.icon-btn {
+  width:36px; height:36px;
+  display:grid; place-items:center;
+  border:0; background:transparent;
+  border-radius:10px; line-height:0;
+}
+.icon-btn:hover { background: rgba(0,0,0,.05); }
+.icon-btn:focus { outline: none; box-shadow: 0 0 0 .15rem rgba(0,0,0,.12); }
+
+/* Hide Bootstrap caret to keep width constant */
+.icon-btn.dropdown-toggle::after { display:none; }
+
+/* Dropdown menu always above */
+.topbar .dropdown-menu { z-index:2000; }

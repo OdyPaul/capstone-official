@@ -30,12 +30,14 @@ function TxViewerModal({ show, onHide, txNo }) {
 }
 
 // Reuse a local MarkPaid modal (same UX as Issuance page)
+// Reuse a local MarkPaid modal (same UX as Issuance page)
 function MarkPaidModal({ show, onHide, defaultTxNo, onSubmit }) {
-  const buildTestReceipt = (tx) => {
-    const ymd = new Date().toISOString().slice(0,10).replace(/-/g,'');
-    const last4 = String(tx || '').split('-').pop().slice(-4).toUpperCase();
-    const rand2 = Math.random().toString(36).slice(2,4).toUpperCase();
-    return `RCPT TEST-${ymd}-${last4}${rand2}`; // 👈 easy to read & unique-ish
+  // Generate a server-friendly receipt number (no spaces)
+  const buildReceipt = (tx) => {
+    const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    const last4 = String(tx || "").split("-").pop().slice(-4).toUpperCase();
+    const rand2 = Math.random().toString(36).slice(2, 4).toUpperCase();
+    return `RCPT-TEST-${ymd}-${last4}${rand2}`; // ✅ no spaces, only A-Z0-9-
   };
 
   const [txNo, setTxNo] = useState(defaultTxNo || "");
@@ -46,30 +48,48 @@ function MarkPaidModal({ show, onHide, defaultTxNo, onSubmit }) {
   useEffect(() => {
     setTxNo(defaultTxNo || "");
     setError("");
-    // prefill a test receipt so user can just click confirm
-    setReceipt(buildTestReceipt(defaultTxNo || ""));
+    setReceipt(buildReceipt(defaultTxNo || ""));
   }, [defaultTxNo, show]);
+
+  // keep value compliant with backend regex: ^[A-Z0-9\-]{3,32}$
+  const onReceiptChange = (e) => {
+    const v = e.target.value
+      .toUpperCase()
+      .replace(/[^A-Z0-9\-]/g, "-") // replace disallowed chars
+      .replace(/-+/g, "-")          // collapse runs of '-'
+      .slice(0, 32);                // enforce max length
+    setReceipt(v);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    if (!txNo.trim() || !receipt.trim()) {
+
+    const cleanTx = txNo.trim();
+    const cleanRcpt = receipt.trim();
+
+    if (!cleanTx || !cleanRcpt) {
       setError("Both fields are required.");
       return;
     }
+
     setSaving(true);
     try {
-      await onSubmit(txNo.trim(), {
+      await onSubmit(cleanTx, {
         method: "cash",
-        receipt_no: receipt.trim(),                  // backend uppercases
+        receipt_no: cleanRcpt,                         // already uppercase
         receipt_date: new Date().toISOString().slice(0, 10),
       });
       onHide(true);
     } catch (err) {
-      const msg = typeof err === "string" ? err : err?.message || "Mark-paid failed";
+      const msg =
+        (err?.response?.data?.message ||
+          err?.message ||
+          "Mark-paid failed") + "";
+
       // If duplicate receipt, auto-suggest a new one so user can retry immediately
       if (msg.toLowerCase().includes("receipt number already used")) {
-        setReceipt(buildTestReceipt(txNo));
+        setReceipt(buildReceipt(cleanTx));
       }
       setError(msg);
     } finally {
@@ -77,41 +97,50 @@ function MarkPaidModal({ show, onHide, defaultTxNo, onSubmit }) {
     }
   };
 
- return (
+  return (
     <Modal show={show} onHide={() => onHide(false)} centered>
       <Form onSubmit={handleSubmit}>
-        <Modal.Header closeButton><Modal.Title>Mark Payment as Paid</Modal.Title></Modal.Header>
+        <Modal.Header closeButton>
+          <Modal.Title>Mark Payment as Paid</Modal.Title>
+        </Modal.Header>
         <Modal.Body>
           <Form.Group className="mb-3">
             <Form.Label>Payment TX No</Form.Label>
-            <Form.Control value={txNo} onChange={(e) => setTxNo(e.target.value)} />
+            <Form.Control
+              value={txNo}
+              onChange={(e) => setTxNo(e.target.value)}
+            />
           </Form.Group>
           <Form.Group>
             <Form.Label>Receipt No</Form.Label>
             <InputGroup>
               <Form.Control
-                placeholder="RCPT TEST-YYYYMMDD-XXXX"
+                placeholder="RCPT-TEST-YYYYMMDD-XXXX"
                 value={receipt}
-                onChange={(e) => setReceipt(e.target.value)}
+                onChange={onReceiptChange}
               />
               <Button
                 variant="outline-secondary"
-                onClick={() => setReceipt(buildTestReceipt(txNo))}
-                title="Regenerate test receipt"
+                onClick={() => setReceipt(buildReceipt(txNo))}
+                title="Regenerate receipt"
               >
                 Regenerate
               </Button>
             </InputGroup>
             <Form.Text className="text-muted">
-              For testing, you can use any <code>RCPT TEST-…</code> value. It must be unique.
+              Must be 3–32 chars, uppercase letters, digits, and dashes only.
             </Form.Text>
           </Form.Group>
           {error ? <div className="text-danger mt-2">{error}</div> : null}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="outline-secondary" onClick={() => onHide(false)}>Cancel</Button>
+          <Button variant="outline-secondary" onClick={() => onHide(false)}>
+            Cancel
+          </Button>
           <Button type="submit" variant="success" disabled={saving}>
-            {saving ? <Spinner size="sm" animation="border" className="me-2" /> : null}
+            {saving ? (
+              <Spinner size="sm" animation="border" className="me-2" />
+            ) : null}
             Save Paid
           </Button>
         </Modal.Footer>
@@ -119,6 +148,7 @@ function MarkPaidModal({ show, onHide, defaultTxNo, onSubmit }) {
     </Modal>
   );
 }
+
 
 export default function PaymentConfirmation() {
   const dispatch = useDispatch();

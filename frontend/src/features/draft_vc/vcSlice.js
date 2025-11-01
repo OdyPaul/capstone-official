@@ -54,6 +54,7 @@ export const deleteDraft = createAsyncThunk(
 
 const initialState = {
   drafts: [],
+  draftFilters: { range: '1m', program: 'All', type: 'All', status: 'draft', q: '', tx: '' },
   isLoadingList: false,    // fetching drafts
   isLoadingCreate: false,  // creating draft(s)
   isLoadingDelete: false,  // deleting
@@ -67,12 +68,14 @@ const vcSlice = createSlice({
   initialState,
   reducers: {
     reset: (state) => {
+      const keep = state.draftFilters;
       state.isLoadingList = false;
       state.isLoadingCreate = false;
       state.isLoadingDelete = false;
       state.isSuccess = false;
       state.isError = false;
       state.message = "";
+      state.draftFilters = keep;
     },
       clearDrafts: (state) => {
       state.drafts = [];          // 🚀 empty the table
@@ -115,15 +118,30 @@ const vcSlice = createSlice({
         state.isSuccess = true;
         state.drafts = action.payload;
 
-          // save filters for auto-reload
-      const filters = action.meta.arg || {};
-      localStorage.setItem("lastDraftFilters", JSON.stringify(filters));
+        const inArg = action.meta.arg || {};
+        const prev  = state.draftFilters || {};
+        const VALID = ['All', 'draft', 'signed', 'anchored'];
+        const normStatus = (s) => (VALID.includes(s) ? s : 'draft');
+
+        const resolved = {
+          range:   inArg.range   ?? prev.range   ?? '1m',
+          program: inArg.program ?? prev.program ?? 'All',
+          type:    inArg.type    ?? prev.type    ?? 'All',
+          status:  normStatus(inArg.status ?? prev.status ?? 'draft'),
+          q:       inArg.q       ?? prev.q       ?? '',
+          tx:      inArg.tx      ?? prev.tx      ?? '',
+        };
+
+        state.draftFilters = resolved;
+        try { localStorage.setItem('lastDraftFilters', JSON.stringify(resolved)); } catch {}
       })
+
       .addCase(getDrafts.rejected, (state, action) => {
         state.isLoadingList = false;
         state.isError = true;
         state.message = action.payload;
       })
+
 
       // 🔹 Delete draft
       .addCase(deleteDraft.pending, (state) => {

@@ -16,17 +16,33 @@ const createDrafts = async (drafts, token) => {
 };
 
 // 🔹 Get drafts with filters
+// 🔹 Get drafts with filters
 const getDrafts = async (filters, token) => {
+  // sensible defaults (range: 1 month, program/type All, status: draft)
+  const defaults = { range: "1m", program: "All", type: "All", status: "draft", q: "", tx: "" };
+  const f = { ...defaults, ...(filters || {}) };
+
+  // Strip "All"/empty so backend isn’t filtered by them
+  const params = {
+    ...(f.range && f.range !== "All" ? { range: f.range } : {}),
+    ...(f.program && f.program !== "All" ? { program: f.program } : {}),
+    ...(f.type && f.type !== "All" ? { type: f.type } : {}),
+    ...(f.status && f.status !== "All" ? { status: f.status } : {}),
+    ...(f.q ? { q: f.q } : {}),
+    ...(f.tx ? { tx: f.tx } : {}),
+  };
+
   const config = {
     headers: { Authorization: `Bearer ${token}` },
-    params: filters,   // ✅ send query params
-    paramsSerializer: (params) =>
-      qs.stringify(params, { arrayFormat: "repeat" }),
+    params,
+    paramsSerializer: (p) => qs.stringify(p, { arrayFormat: "repeat" }),
   };
 
   const res = await axios.get(`${API_URL}/api/web/draft`, config);
   return res.data;
 };
+
+
 
 // 🔹 Delete draft
 const deleteDraft = async (id, token) => {
