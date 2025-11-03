@@ -6,4 +6,4 @@ function Curriculum() {
   </section>
 }
 
-export default studentProfiles
+export default Curriculum

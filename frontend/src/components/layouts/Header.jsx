@@ -1,41 +1,109 @@
 // src/components/layouts/Header.jsx
-import React from 'react'
-import { FaUser, FaBell, FaCog, FaUserCircle, FaLock } from 'react-icons/fa'
-import { useSelector } from "react-redux"
-import "./css/header.css"
+import React, { useState } from "react";
+import { FaUser, FaBell, FaCog, FaUserCircle, FaLock } from "react-icons/fa";
+import { useSelector, useDispatch } from "react-redux";
+import { Modal } from "react-bootstrap";
+import { useNavigate } from "react-router-dom";
+import { logout, reset } from "../../features/auth/authSlice";
+import { persistor } from "../../app/store";
+import "./css/header.css";
 
-const Topnav = () => {
-  const { user } = useSelector((state) => state.auth)
+const Header = () => {
+  const { user } = useSelector((state) => state.auth);
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+
+  const [showLogout, setShowLogout] = useState(false);
+
+  const onConfirmLogout = async () => {
+    setShowLogout(false);
+    try {
+      await dispatch(logout());
+    } finally {
+      dispatch(reset());
+      persistor.purge();
+      navigate("/login");
+    }
+  };
+
+  // Your backend field name is profilePicture ✅
+  const profileImage = user?.profilePicture || null;
 
   return (
     <nav className="navbar bg-light sticky-top px-4 py-2 topbar">
       {/* Left: Search */}
       <form className="d-flex align-items-center" role="search" style={{ maxWidth: 360 }}>
-        <input className="form-control form-control-sm me-2" type="search" placeholder="Search" aria-label="Search" />
-        <button className="btn btn-outline-secondary btn-sm" type="submit">Search</button>
+        <input
+          className="form-control form-control-sm me-2"
+          type="search"
+          placeholder="Search"
+          aria-label="Search"
+        />
+        <button className="btn btn-outline-secondary btn-sm" type="submit">
+          Search
+        </button>
       </form>
 
-      {/* Right: ONE user icon with dropdown */}
+      {/* Right: user avatar / dropdown */}
       <div className="ms-auto dropdown">
         <button
-          className="icon-btn dropdown-toggle"
+          className="icon-btn dropdown-toggle d-flex align-items-center"
           id="userMenu"
           data-bs-toggle="dropdown"
           aria-expanded="false"
           aria-label="Open user menu"
           type="button"
         >
-          <FaUser size={18} />
+          {profileImage ? (
+            <img
+              src={profileImage}
+              alt="Profile"
+              style={{
+                width: 34,
+                height: 34,
+                objectFit: "cover",
+                borderRadius: "50%",
+                border: "1px solid #ccc",
+              }}
+              onError={(e) => {
+                e.currentTarget.onerror = null;
+                e.currentTarget.style.display = "none";
+              }}
+            />
+          ) : (
+            <FaUser size={18} />
+          )}
         </button>
 
         <ul className="dropdown-menu dropdown-menu-end shadow" aria-labelledby="userMenu">
-          <li className="dropdown-item-text text-muted small px-3">
-            <FaUserCircle className="me-2" />
-            {user ? `${user.role} | ${user.name}` : "Staff | Guest"}
+          <li className="dropdown-item-text text-muted small px-3 d-flex align-items-center">
+            {profileImage ? (
+              <img
+                src={profileImage}
+                alt="Profile"
+                style={{
+                  width: 28,
+                  height: 28,
+                  objectFit: "cover",
+                  borderRadius: "50%",
+                  border: "1px solid #ccc",
+                  marginRight: 8,
+                }}
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            ) : (
+              <FaUserCircle className="me-2" />
+            )}
+            {user
+              ? `${user.role || "staff"} | ${user.fullName || user.username || user.email || "User"}`
+              : "Staff | Guest"}
           </li>
+
           <li><hr className="dropdown-divider" /></li>
 
-          {/* Optional: a simple notifications entry instead of a separate bell */}
           <li>
             <button className="dropdown-item d-flex align-items-center" type="button">
               <FaBell className="me-2" /> Notifications
@@ -49,14 +117,40 @@ const Topnav = () => {
           </li>
 
           <li>
-            <button className="dropdown-item d-flex align-items-center" type="button">
+            <button
+              className="dropdown-item d-flex align-items-center"
+              type="button"
+              onClick={() => setShowLogout(true)}
+            >
               <FaLock className="me-2" /> Logout
             </button>
           </li>
         </ul>
       </div>
-    </nav>
-  )
-}
 
-export default Topnav
+      {/* === Confirm Logout Modal === */}
+      <Modal
+        show={showLogout}
+        onHide={() => setShowLogout(false)}
+        centered
+        backdrop="static"
+        keyboard={false}
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Confirm Logout</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>Do you want to logout?</Modal.Body>
+        <Modal.Footer>
+          <button className="btn btn-outline-secondary" onClick={() => setShowLogout(false)}>
+            Cancel
+          </button>
+          <button className="btn btn-danger" onClick={onConfirmLogout}>
+            Logout
+          </button>
+        </Modal.Footer>
+      </Modal>
+    </nav>
+  );
+};
+
+export default Header;

@@ -6,7 +6,7 @@ import NotFound from './pages/NotFound'
 // pages
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
-import AccountsAdminStaff from './pages/accounts/AccountsAdminStaff'
+import AccountsAdminStaff from './pages/accounts/ManageAccounts'
 import VerifyUsers from './pages/accounts/VerifyUsers'
 import Issue from './pages/vc/issue'
 import Draft from './pages/vc/draft'
@@ -23,7 +23,8 @@ import IssuedVc from './pages/registry/issuedVc'
 import Index from './pages/landing_portal'
 import Verification from './pages/landing_portal/sub/verification_portal'
 import Services from './pages/landing_portal/sub/services'
-
+import CreateStudent from "./pages/students/ManageStudent"
+import Students from "./pages/students/Profiles"
 export default function AppRoutes() {
   return (
     <Routes>
@@ -37,6 +38,12 @@ export default function AppRoutes() {
       <Route element={<Layout />}>
         <Route index element={<Dashboard />} />
         <Route path="accounts/staff-admin" element={<AccountsAdminStaff />} />
+        <Route path="students/student-profiles/" element={<Students />} />
+
+        <Route path="/students/create-student" element={<CreateStudent />} />
+
+
+        
         <Route path="accounts/verify-users" element={<VerifyUsers />} />
         <Route path="vc/draft" element={<Draft />} />
         <Route path="vc/sub/createDrafts" element={<CreateDrafts />} />

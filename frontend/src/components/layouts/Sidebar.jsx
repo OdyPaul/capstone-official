@@ -1,12 +1,9 @@
+// src/components/layouts/Sidebar.jsx
 import React, { useState, useEffect, useMemo } from "react";
-import { Nav, Button, Modal } from "react-bootstrap";
+import { Nav, Button } from "react-bootstrap";
 import "./css/sidebar.css";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { FaSignOutAlt } from "react-icons/fa";
-import { useSelector, useDispatch } from "react-redux";
-import { logout, reset } from "../../features/auth/authSlice";
-import { persistor } from "../../app/store";
-   // <-- add Modal
+import { useSelector } from "react-redux";
 import {
   FaChevronLeft,
   FaChevronRight,
@@ -20,10 +17,10 @@ import {
   FaCodeBranch,
   FaClipboardList,
   FaRegFileAlt,
+  FaUserGraduate
 } from "react-icons/fa";
 
 function Sidebar() {
-  const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useSelector((state) => state.auth);
@@ -69,21 +66,13 @@ function Sidebar() {
     () => ({
       vcIssue: ["/vc/issue", "/vc/request", "/vc/draft"],
       accounts:
-        user?.role === "admin" || user?.role === "developer"
+        user?.role === "admin" || user?.role === "developer" || user?.role === "superadmin"
           ? ["/accounts/verify-users", "/accounts/staff-admin"]
           : ["/accounts/verify-users", `/accounts/profile/${user?._id}`],
     }),
     [user]
   );
-   const [showLogout, setShowLogout] = useState(false);
 
-  const onConfirmLogout = () => {
-    setShowLogout(false);
-    dispatch(logout());
-    dispatch(reset());
-    persistor.purge();
-    navigate("/login");
-  };
   // Collapsed rail-hint for VC/Accounts group buttons (shows the page that click will go to)
   const vcHint =
     routeLabel[submenuRoutes.vcIssue[submenuClickCount.vcIssue]] || "VC";
@@ -111,13 +100,6 @@ function Sidebar() {
     }
   };
 
-  const onLogout = () => {
-    dispatch(logout());
-    dispatch(reset());
-    persistor.purge();
-    navigate("/login");
-  };
-
   return (
     <nav
       className={`sidebar d-flex flex-column flex-shrink-0 ${collapsed ? "collapsed" : ""}`}
@@ -133,7 +115,7 @@ function Sidebar() {
       </Button>
 
       <div className="p-4">
-        <h4 className="logo-text fw-bold mb-0">BVC System</h4>
+        <h4 className="logo-text fw-bold mb-0">Credential Issuance</h4>
         <p className="sidebar-sub hide-on-collapse">Dashboard</p>
       </div>
 
@@ -149,6 +131,18 @@ function Sidebar() {
         >
           <FaHome className="me-3 icon" />
           <span className="hide-on-collapse">Dashboard</span>
+        </Nav.Link>
+        {/* Students */}
+        <Nav.Link
+          as={NavLink}
+          to="/students/student-profiles"
+          end
+          className="sidebar-link p-3"
+          data-label="Students"
+          aria-label="Students"
+        >
+          <FaUserGraduate className="me-3 icon" />
+          <span className="hide-on-collapse">Students</span>
         </Nav.Link>
 
         {/* VC Group */}
@@ -235,7 +229,7 @@ function Sidebar() {
               <span>Verify Users</span>
             </Nav.Link>
 
-            {(user?.role === "admin" || user?.role === "developer") && (
+            {(user?.role === "admin" || user?.role === "developer" || user?.role === "superadmin") && (
               <Nav.Link
                 as={NavLink}
                 to="/accounts/staff-admin"
@@ -287,52 +281,7 @@ function Sidebar() {
           <span className="hide-on-collapse">Blockchain Explorer</span>
         </Nav.Link>
 
-        {/* About */}
-        <Nav.Link
-          as={NavLink}
-          to="/about"
-          className="sidebar-link p-3"
-          data-label="About"
-          aria-label="About"
-        >
-          <FaInfoCircle className="me-3 icon" />
-          <span className="hide-on-collapse">About</span>
-        </Nav.Link>
       </Nav>
-
- <button
-        type="button"
-        className="logout-cta sidebar-link text-start"
-        onClick={() => setShowLogout(true)}
-        data-label="Logout"
-        aria-label="Logout"
-      >
-        <FaSignOutAlt className="me-3 icon logout-icon" />
-        <span className="hide-on-collapse">Logout</span>
-      </button>
-
-      {/* === Confirm Modal === */}
-      <Modal
-        show={showLogout}
-        onHide={() => setShowLogout(false)}
-        centered
-        backdrop="static"
-        keyboard={false}
-        contentClassName="logout-modal"
-      >
-        <Modal.Header closeButton>
-          <Modal.Title>Confirm Logout</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>Do you want to logout?</Modal.Body>
-        <Modal.Footer>
-          <button className="btn btn-outline-secondary" onClick={() => setShowLogout(false)}>
-            Cancel
-          </button>
-          <button className="btn btn-logout" onClick={onConfirmLogout}>
-            Logout
-          </button>
-        </Modal.Footer>
-      </Modal>
     </nav>
   );
 }

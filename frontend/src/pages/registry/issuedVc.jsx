@@ -26,10 +26,11 @@ const RANGE_OPTS = ["All", "today", "1w", "1m", "6m"];
 
 function normParams({ q, range, claimed }) {
   const out = {};
-  if (q) out.q = q;
-  if (range && range !== "All") out.range = range;
-  if (claimed === "claimed") out.claimed = "true";
-  if (claimed === "claimable") out.claimed = "false";
+  const qq = String(q || '').trim();
+  if (qq) out.q = qq;
+  if (range && range !== 'All') out.range = range;
+  if (claimed === 'claimed') out.claimed = 'true';
+  if (claimed === 'claimable') out.claimed = 'false';
   return out;
 }
 
@@ -43,15 +44,17 @@ export default function IssuedVc() {
   const [range, setRange] = useState(DEFAULTS.range);
   const [claimed, setClaimed] = useState(DEFAULTS.claimed);
   const [showSettings, setShowSettings] = useState(false);
+
+  // refresh list after claim modal closes
   const claimModalOpen = useSelector((s) => s.issuance.claimModal.open);
   const wasOpenRef = useRef(false);
   useEffect(() => {
-  if (wasOpenRef.current && !claimModalOpen) {
-    // modal just closed → re-apply current filters
-    dispatch(loadIssuedVCs(normParams({ q, range, claimed })));
-  }
-  wasOpenRef.current = claimModalOpen;
-}, [claimModalOpen, dispatch, q, range, claimed]); 
+    if (wasOpenRef.current && !claimModalOpen) {
+      dispatch(loadIssuedVCs(normParams({ q, range, claimed })));
+    }
+    wasOpenRef.current = claimModalOpen;
+  }, [claimModalOpen, dispatch, q, range, claimed]);
+
   const apply = useCallback(() => {
     dispatch(loadIssuedVCs(normParams({ q, range, claimed })));
   }, [dispatch, q, range, claimed]);
@@ -63,9 +66,7 @@ export default function IssuedVc() {
     dispatch(loadIssuedVCs(normParams(DEFAULTS)));
   }, [dispatch]);
 
-  useEffect(() => {
-    apply();
-  }, []); // initial load
+  useEffect(() => { apply(); }, []); // initial load
 
   const rows = issuedVCs || [];
 
@@ -81,45 +82,44 @@ export default function IssuedVc() {
         </div>
       </div>
 
-      {/* toolbar (similar to Drafts) */}
+      {/* toolbar */}
       <Card className="mb-3">
-        <Card.Body>
-          <div className="d-flex flex-wrap gap-2 align-items-center">
-            <Form
-              onSubmit={(e) => {
-                e.preventDefault();
-                apply();
-              }}
-              className="flex-grow-1"
-            >
-              <InputGroup>
-                <InputGroup.Text><FaSearch /></InputGroup.Text>
-                <Form.Control
-                  placeholder="Search name, student no., type…"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                />
-                <Button type="submit" variant="primary">Apply</Button>
-                <Button type="button" variant="outline-secondary" onClick={reset}>Reset</Button>
-                <Button
-                  type="button"
-                  variant="outline-dark"
-                  title="Filter settings"
-                  onClick={() => setShowSettings(true)}
-                >
-                  <FaCog />
-                </Button>
-              </InputGroup>
-            </Form>
+        <Card.Body className="pb-2">
+          {/* Row 1: search + buttons */}
+          <Form
+            onSubmit={(e) => {
+              e.preventDefault();
+              apply();
+            }}
+            className="w-100"
+          >
+            <InputGroup>
+              <InputGroup.Text><FaSearch /></InputGroup.Text>
+              <Form.Control
+                placeholder="Search name, student no., type…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+              <Button type="submit" variant="primary">Apply</Button>
+              <Button type="button" variant="outline-secondary" onClick={reset}>Reset</Button>
+              <Button
+                type="button"
+                variant="outline-dark"
+                title="Filter settings"
+                onClick={() => setShowSettings(true)}
+              >
+                <FaCog />
+              </Button>
+            </InputGroup>
+          </Form>
 
-            {/* active filter badges */}
-            <div className="ms-auto d-flex gap-2 flex-wrap">
-              <Badge bg="light" text="dark">Range: {range}</Badge>
-              <Badge bg="light" text="dark">
-                Status: {claimed === "claimed" ? "Claimed" : claimed === "claimable" ? "Claimable" : "All"}
-              </Badge>
-              {q ? <Badge bg="light" text="dark">q: {q}</Badge> : null}
-            </div>
+          {/* Row 2: badges (always below the search row) */}
+          <div className="mt-2 d-flex flex-wrap gap-2">
+            <Badge bg="light" text="dark">Range: {range}</Badge>
+            <Badge bg="light" text="dark">
+              Status: {claimed === "claimed" ? "Claimed" : claimed === "claimable" ? "Claimable" : "All"}
+            </Badge>
+            {q ? <Badge bg="light" text="dark">q: {q}</Badge> : null}
           </div>
         </Card.Body>
       </Card>

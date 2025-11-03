@@ -3,7 +3,7 @@ import axios from 'axios';
 import { API_URL } from '../../../config';
 
 const LS_KEY = 'user';
-const allowedRoles = ['admin', 'staff', 'developer'];
+const allowedRoles = ['admin', 'superadmin', 'developer'];
 
 const getStoredUser = () => {
   try { return JSON.parse(localStorage.getItem(LS_KEY)); } catch { return null; }
