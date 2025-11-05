@@ -100,7 +100,7 @@ html, body { height: 100%; overflow: hidden; }
 
 /* Branding */
 .logo-text{
-  background:linear-gradient(45deg,#6b8cff,#8b9fff);
+  background:linear-gradient(45deg,#08b59b,#a2f9fe);
   background-clip:text; -webkit-background-clip:text;
   color:transparent; -webkit-text-fill-color:transparent;
   transition:opacity var(--anim-med) var(--easing), transform var(--anim-med) var(--easing);
