@@ -101,6 +101,9 @@ export default function Dashboard() {
   const token = user?.token;
   const userId = user?._id || "me";
 
+const displayName = (user?.fullName && user.fullName.trim()) || user?.username || "Admin";
+const displayRole = user?.role || "admin";
+
   // Per-card ranges
   const [studentsRange, setStudentsRange] = useState("all");
   const [draftsRange, setDraftsRange] = useState("1w");
@@ -502,10 +505,16 @@ export default function Dashboard() {
 
   return (
     <>
-      <section className="heading mb-3">
-        <h2>Dashboard</h2>
-        <p className="text-muted">Streamline your workflow with our intuitive dashboard.</p>
-      </section>
+  <section className="heading mb-3">
+    <h2 className="mb-1">
+      Dashboard <span className="badge bg-secondary ms-2"></span>
+    </h2>
+    <div className="mt-1">
+      Hello <strong>{displayName}</strong>, welcome to
+      <strong> Blockchain-based Credential Verification System</strong> (Credential Issuance).
+    </div>
+  </section>
+
 
       {err && (
         <div className="alert alert-danger">

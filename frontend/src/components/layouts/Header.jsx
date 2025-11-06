@@ -47,7 +47,7 @@ const Header = () => {
       {/* Right: user avatar / dropdown */}
       <div className="ms-auto dropdown">
         <button
-          className="icon-btn dropdown-toggle d-flex align-items-center"
+          className="icon-btn dropdown-toggle d-flex align-items-center me-5 pe-4"
           id="userMenu"
           data-bs-toggle="dropdown"
           aria-expanded="false"

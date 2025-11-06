@@ -1,6 +1,6 @@
 // src/pages/accounts/AuditLogs.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { useParams, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import {
@@ -16,6 +16,7 @@ import {
 } from "react-bootstrap";
 import { FaCog, FaSearch, FaSync } from "react-icons/fa";
 import { API_URL } from "../../../config";
+import { fetchAccounts } from "../../features/accounts/accountSlice";
 
 const TYPE_OPTIONS = [
   { key: "all", label: "All" },
@@ -59,13 +60,23 @@ function isLikelyObjectId(s = "") {
 }
 
 export default function AuditLogs() {
+  const dispatch = useDispatch();
   const { id: actorIdParam } = useParams();
   const [urlParams, setUrlParams] = useSearchParams();
 
   const token = useSelector((s) => s.auth?.user?.token);
 
+  // ===== Accounts (web users) for Admin Id filter =====
+  const accountsState = useSelector((s) => s.accounts);
+  const accounts = accountsState?.items || [];
+  const accountsLoading = accountsState?.isLoading;
+
+  useEffect(() => {
+    // Load web users to use in Admin Id filter
+    dispatch(fetchAccounts());
+  }, [dispatch]);
+
   // ====== Query state ======
-  // Search input & "applied" search (Apply button commits q -> qApplied)
   const [q, setQ] = useState(urlParams.get("q") || "");
   const [qApplied, setQApplied] = useState(urlParams.get("q") || "");
 
@@ -74,7 +85,6 @@ export default function AuditLogs() {
   const [source, setSource] = useState(urlParams.get("source") || "all");
   const [actorId, setActorId] = useState(() => {
     const fromUrl = urlParams.get("actorId") || "";
-    // route param wins if valid
     if (actorIdParam && isLikelyObjectId(actorIdParam)) return actorIdParam;
     return fromUrl;
   });
@@ -102,9 +112,13 @@ export default function AuditLogs() {
   const [mType, setMType] = useState(type);
   const [mSource, setMSource] = useState(source);
   const [mActorId, setMActorId] = useState(actorId);
+
+  // Admin search input (search by name/username/email, sets actor id)
+  const [mAdminQuery, setMAdminQuery] = useState("");
   const [mFrom, setMFrom] = useState(from);
   const [mTo, setMTo] = useState(to);
   const [mLimit, setMLimit] = useState(limit);
+  const [showAdminSuggestions, setShowAdminSuggestions] = useState(false);
 
   useEffect(() => {
     // keep modal copies in sync when source states change externally
@@ -114,7 +128,34 @@ export default function AuditLogs() {
     setMFrom(from);
     setMTo(to);
     setMLimit(limit);
-  }, [type, source, actorId, from, to, limit]);
+
+    // Prefill admin display text if we have an actorId and accounts loaded
+    if (actorId && accounts.length && !mAdminQuery) {
+      const u = accounts.find((a) => String(a._id) === String(actorId));
+      if (u) {
+        setMAdminQuery(u.fullName || u.username || u.email || "");
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, source, actorId, from, to, limit, accounts]);
+
+  // ===== Admin suggestions =====
+  const adminMatches = useMemo(() => {
+    const needle = mAdminQuery.trim().toLowerCase();
+    if (!needle) return [];
+    return accounts
+      .filter((u) => {
+        const hay = `${u.fullName || ""} ${u.username || ""} ${u.email || ""}`.toLowerCase();
+        return hay.includes(needle);
+      })
+      .slice(0, 8);
+  }, [mAdminQuery, accounts]);
+
+  const onPickAdmin = (u) => {
+    setMActorId(String(u._id));
+    setMAdminQuery(u.fullName || u.username || u.email || String(u._id));
+    setShowAdminSuggestions(false);
+  };
 
   // ====== URL sync ======
   const applyToUrl = () => {
@@ -136,10 +177,7 @@ export default function AuditLogs() {
     setLoading(true);
     setErr("");
     try {
-      const params = {
-        page,
-        limit,
-      };
+      const params = { page, limit };
       if (qApplied.trim()) params.q = qApplied.trim();
       if (type !== "all") params.type = type;
       if (source !== "all") params.source = source;
@@ -202,14 +240,27 @@ export default function AuditLogs() {
     setMFrom(from);
     setMTo(to);
     setMLimit(limit);
+    // Prefill admin display text on open
+    if (actorId && accounts.length) {
+      const u = accounts.find((a) => String(a._id) === String(actorId));
+      setMAdminQuery(u ? (u.fullName || u.username || u.email || "") : "");
+    } else {
+      setMAdminQuery("");
+    }
     setShowFilters(true);
+  };
+
+  const resolveActorIdFromQuery = () => {
+    if (isLikelyObjectId(mAdminQuery)) return mAdminQuery.trim();
+    return mActorId.trim();
   };
 
   const onSaveFilters = () => {
     // commit modal -> main states (triggers fetch via useEffect)
+    const resolvedActor = resolveActorIdFromQuery();
     setType(mType);
     setSource(mSource);
-    setActorId(mActorId.trim());
+    setActorId(resolvedActor);
     setFrom(mFrom);
     setTo(mTo);
     setLimit(mLimit);
@@ -227,7 +278,14 @@ export default function AuditLogs() {
 
   const pageCount = useMemo(() => Math.max(1, Math.ceil(total / limit)), [total, limit]);
   const startIdx = useMemo(() => (total ? (page - 1) * limit + 1 : 0), [page, limit, total]);
-  const endIdx = useMemo(() => Math.min(total, (page - 1) * limit + (items?.length || 0)), [page, limit, total, items]);
+  const endIdx = useMemo(
+    () => Math.min(total, (page - 1) * limit + (items?.length || 0)),
+    [page, limit, total, items]
+  );
+
+  // Validation: if user typed something but did not pick a user and also didn't paste a valid ObjectId
+  const actorInputInvalid =
+    Boolean(mAdminQuery) && !isLikelyObjectId(mAdminQuery) && !mActorId;
 
   // ====== UI ======
   return (
@@ -370,7 +428,7 @@ export default function AuditLogs() {
 
         {/* Footer with pagination */}
         <Card.Footer className="d-flex align-items-center justify-content-between">
-          <div className="text-muted small">Page {page} of {Math.max(1, Math.ceil(total / limit))}</div>
+          <div className="text-muted small">Page {page} of {pageCount}</div>
           <div className="d-flex gap-2">
             <Button size="sm" variant="outline-secondary" onClick={() => setPage(1)} disabled={page <= 1 || loading}>
               « First
@@ -383,19 +441,19 @@ export default function AuditLogs() {
               style={{ width: 80 }}
               type="number"
               min={1}
-              max={Math.max(1, Math.ceil(total / limit))}
+              max={pageCount}
               value={page}
               onChange={(e) => {
-                const pc = Math.max(1, Math.ceil(total / limit));
+                const pc = pageCount;
                 const v = Math.min(pc, Math.max(1, Number(e.target.value) || 1));
                 setPage(v);
               }}
-              disabled={loading || Math.ceil(total / limit) <= 1}
+              disabled={loading || pageCount <= 1}
             />
-            <Button size="sm" variant="outline-secondary" onClick={() => setPage((p) => p + 1)} disabled={page >= Math.ceil(total / limit) || loading}>
+            <Button size="sm" variant="outline-secondary" onClick={() => setPage((p) => p + 1)} disabled={page >= pageCount || loading}>
               Next ›
             </Button>
-            <Button size="sm" variant="outline-secondary" onClick={() => setPage(Math.max(1, Math.ceil(total / limit)))} disabled={page >= Math.ceil(total / limit) || loading}>
+            <Button size="sm" variant="outline-secondary" onClick={() => setPage(Math.max(1, pageCount))} disabled={page >= pageCount || loading}>
               Last »
             </Button>
           </div>
@@ -426,19 +484,84 @@ export default function AuditLogs() {
               </Form.Select>
             </Col>
 
+            {/* Admin Id picker (search by name/username/email → sets Actor ID) */}
             <Col md={12}>
-              <Form.Label className="mb-1">Actor ID</Form.Label>
-              <Form.Control
-                placeholder="Mongo ObjectId"
-                value={mActorId}
-                onChange={(e) => setMActorId(e.target.value)}
-                isInvalid={mActorId && !isLikelyObjectId(mActorId)}
-              />
-              {mActorId && !isLikelyObjectId(mActorId) && (
+              <Form.Label className="mb-1">Admin Id</Form.Label>
+              <div style={{ position: "relative" }}>
+                <Form.Control
+                  placeholder="Type a name / username / email, or paste ObjectId"
+                  value={mAdminQuery}
+                  onChange={(e) => {
+                    setMAdminQuery(e.target.value);
+                    setMActorId(""); // clear selection until a suggestion is chosen
+                    setShowAdminSuggestions(true);
+                  }}
+                  onFocus={() => setShowAdminSuggestions(true)}
+                  autoComplete="off"
+                  isInvalid={actorInputInvalid}
+                />
                 <Form.Control.Feedback type="invalid">
-                  Must be a 24-character hex ObjectId
+                  Pick an admin from the list or paste a valid 24-char ObjectId.
                 </Form.Control.Feedback>
-              )}
+
+                {/* Selected badge */}
+                {mActorId ? (
+                  <div className="mt-1">
+                    <Badge bg="secondary">
+                      Selected Actor ID: {shortId(mActorId)}
+                    </Badge>
+                    <Button
+                      variant="link"
+                      className="p-0 ms-2"
+                      onClick={() => { setMActorId(""); setMAdminQuery(""); }}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                ) : null}
+
+                {/* Suggestions dropdown */}
+                {showAdminSuggestions && adminMatches.length > 0 && (
+                  <div
+                    className="border bg-white rounded shadow-sm mt-1"
+                    style={{
+                      position: "absolute",
+                      zIndex: 1050,
+                      left: 0,
+                      right: 0,
+                      maxHeight: 220,
+                      overflowY: "auto",
+                    }}
+                  >
+                    {adminMatches.map((u) => {
+                      const primary = u.fullName || u.username || u.email || "(unnamed)";
+                      const secondary = [u.username, u.email].filter(Boolean).join(" · ");
+                      return (
+                        <button
+                          key={u._id}
+                          type="button"
+                          className="w-100 text-start btn btn-light border-0"
+                          onClick={() => onPickAdmin(u)}
+                          style={{ padding: "8px 10px" }}
+                          title={String(u._id)}
+                        >
+                          <div className="d-flex justify-content-between align-items-center">
+                            <div>
+                              <div className="fw-semibold">{primary}</div>
+                              <div className="text-muted small">{secondary || "—"}</div>
+                            </div>
+                            <Badge bg="light" text="dark">{shortId(u._id)}</Badge>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              {/* Helper / loading */}
+              <div className="form-text">
+                {accountsLoading ? "Loading admins…" : "Search admins by name, username, or email."}
+              </div>
             </Col>
 
             <Col md={6}>
@@ -465,7 +588,7 @@ export default function AuditLogs() {
           <Button
             variant="primary"
             onClick={onSaveFilters}
-            disabled={!!(mActorId && !isLikelyObjectId(mActorId))}
+            disabled={actorInputInvalid}
           >
             Save Filters
           </Button>
