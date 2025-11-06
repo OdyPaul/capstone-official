@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { Nav, Button } from "react-bootstrap";
 import "./css/sidebar.css";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import {
   FaChevronLeft,
@@ -12,17 +12,15 @@ import {
   FaUserCheck,
   FaUsers,
   FaCogs,
-  FaInfoCircle,
   FaFolderOpen,
   FaCodeBranch,
   FaClipboardList,
   FaRegFileAlt,
-  FaUserGraduate
+  FaUserGraduate,
 } from "react-icons/fa";
 
 function Sidebar() {
   const navigate = useNavigate();
-  const location = useLocation();
   const { user } = useSelector((state) => state.auth);
 
   useEffect(() => {
@@ -42,10 +40,15 @@ function Sidebar() {
 
   const toggleSidebar = () => setCollapsed((c) => !c);
 
+  // convenience flag: only superadmin + developer
+  const isDevOrSuper =
+    user?.role === "developer" || user?.role === "superadmin";
+
   // Map route -> label (for tooltips)
   const routeLabel = useMemo(
     () => ({
       "/": "Dashboard",
+      "/students/student-profiles": "Students",
       "/vc/draft": "Draft",
       "/vc/issue": "Issue",
       "/vc/request": "Request",
@@ -54,30 +57,41 @@ function Sidebar() {
       "/accounts/staff-admin": "Staff/Admins",
       "/key-vaults": "Key Vaults",
       "/blockchain-explorer": "Blockchain Explorer",
-      "/about": "About",
-      // profiles (dynamic)
-      ...(user?._id ? { [`/accounts/profile/${user._id}`]: "My Profile" } : {}),
+      // dynamic entries
+      ...(user?._id
+        ? {
+            [`/accounts/profile/${user._id}`]: "My Profile",
+            [`/accounts/audit-logs/${user._id}`]: "Audit Logs",
+          }
+        : {}),
     }),
     [user?._id]
   );
 
-  // submenu routes based on role
+  // submenu routes (collapsed mode cycles through these)
   const submenuRoutes = useMemo(
     () => ({
       vcIssue: ["/vc/issue", "/vc/request", "/vc/draft"],
-      accounts:
-        user?.role === "admin" || user?.role === "developer" || user?.role === "superadmin"
-          ? ["/accounts/verify-users", "/accounts/staff-admin"]
-          : ["/accounts/verify-users", `/accounts/profile/${user?._id}`],
+      accounts: isDevOrSuper
+        ? [
+            "/accounts/verify-users",
+            "/accounts/staff-admin",
+            user?._id ? `/accounts/audit-logs/${user._id}` : "/accounts/verify-users",
+          ]
+        : [
+            "/accounts/verify-users",
+            user?._id ? `/accounts/profile/${user._id}` : "/accounts/verify-users",
+          ],
     }),
-    [user]
+    [isDevOrSuper, user]
   );
 
-  // Collapsed rail-hint for VC/Accounts group buttons (shows the page that click will go to)
+  // Collapsed rail-hint for VC/Accounts group buttons
   const vcHint =
     routeLabel[submenuRoutes.vcIssue[submenuClickCount.vcIssue]] || "VC";
   const accountsHint =
-    routeLabel[submenuRoutes.accounts[submenuClickCount.accounts]] || "Accounts";
+    routeLabel[submenuRoutes.accounts[submenuClickCount.accounts]] ||
+    "Accounts";
 
   const toggleMenu = (menu) => {
     if (collapsed) {
@@ -102,7 +116,9 @@ function Sidebar() {
 
   return (
     <nav
-      className={`sidebar d-flex flex-column flex-shrink-0 ${collapsed ? "collapsed" : ""}`}
+      className={`sidebar d-flex flex-column flex-shrink-0 ${
+        collapsed ? "collapsed" : ""
+      }`}
       aria-expanded={!collapsed}
     >
       <Button
@@ -132,6 +148,7 @@ function Sidebar() {
           <FaHome className="me-3 icon" />
           <span className="hide-on-collapse">Dashboard</span>
         </Nav.Link>
+
         {/* Students */}
         <Nav.Link
           as={NavLink}
@@ -229,7 +246,7 @@ function Sidebar() {
               <span>Verify Users</span>
             </Nav.Link>
 
-            {(user?.role === "admin" || user?.role === "developer" || user?.role === "superadmin") && (
+            {isDevOrSuper && (
               <Nav.Link
                 as={NavLink}
                 to="/accounts/staff-admin"
@@ -242,7 +259,20 @@ function Sidebar() {
               </Nav.Link>
             )}
 
-            {user?.role !== "admin" && user?.role !== "developer" && user?._id && (
+            {isDevOrSuper && user?._id && (
+              <Nav.Link
+                as={NavLink}
+                to={`/accounts/audit-logs/${user._id}`}
+                className="sidebar-link ps-5"
+                data-label="Audit logs"
+                aria-label="Audit Logs"
+              >
+                <FaClipboardList className="me-2 icon" />
+                <span>Audit Logs</span>
+              </Nav.Link>
+            )}
+
+            {!isDevOrSuper && user?._id && (
               <Nav.Link
                 as={NavLink}
                 to={`/accounts/profile/${user._id}`}
@@ -280,7 +310,6 @@ function Sidebar() {
           <FaCodeBranch className="me-3 icon" />
           <span className="hide-on-collapse">Blockchain Explorer</span>
         </Nav.Link>
-
       </Nav>
     </nav>
   );

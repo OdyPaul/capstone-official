@@ -111,7 +111,11 @@ const Header = () => {
           </li>
 
           <li>
-            <button className="dropdown-item d-flex align-items-center" type="button">
+             <button
+               className="dropdown-item d-flex align-items-center"
+               type="button"
+               onClick={() => navigate('/accounts/profile')}
+             >
               <FaCog className="me-2" /> Profile Settings
             </button>
           </li>

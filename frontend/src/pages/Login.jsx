@@ -52,7 +52,7 @@ export default function Login() {
     if (isSuccess && user && !greeted.current) {
       greeted.current = true;
       toast.success("Welcome back!");
-      navigate("/");
+      navigate("/loading");
     }
   }, [isSuccess, user, navigate]);
 
