@@ -29,6 +29,14 @@ import { API_URL } from "../../../config";
 // ---------- Config ----------
 const VPATH = `${API_URL}/api/verification-request`; // server mounts this in backend/server.js
 
+// ---------- Defaults for "Reset" ----------
+const DEFAULTS = {
+  q: "",
+  status: "unverified", // UI status (maps to API "pending")
+  page: 1,
+  limit: 20,
+};
+
 // ---------- Local helpers ----------
 const PAGE_SIZES = [10, 20, 50, 100];
 const statusVariant = (s) =>
@@ -64,18 +72,19 @@ export default function VerifyUsers() {
   const token = user?.token;
 
   // toolbar / list state
-  const [q, setQ] = useState("");
-  const [items, setItems] = useState([]); // current page items from API
+  const [q, setQ] = useState(DEFAULTS.q);
+  const [status, setStatus] = useState(DEFAULTS.status); // UI: Unverified (maps to pending)
+  const [items, setItems] = useState([]);
   const [totalRemote, setTotalRemote] = useState(0);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
+  const [page, setPage] = useState(DEFAULTS.page);
+  const [limit, setLimit] = useState(DEFAULTS.limit);
   const [showSettings, setShowSettings] = useState(false);
 
   // modal state
   const [showVerify, setShowVerify] = useState(false);
-  const [current, setCurrent] = useState(null); // detailed request
+  const [current, setCurrent] = useState(null);
   const [loadingCurrent, setLoadingCurrent] = useState(false);
 
   // student search (right card)
@@ -95,6 +104,8 @@ export default function VerifyUsers() {
     [token]
   );
 
+  const apiStatus = (ui) => (ui === "unverified" ? "pending" : ui); // UI → API
+
   // fetch list (admin) — server-side pagination + filtering
   const fetchRequests = async () => {
     if (!token) return;
@@ -107,6 +118,7 @@ export default function VerifyUsers() {
           page,
           limit,
           q: q.trim() || undefined,
+          status: (status || "all") === "all" ? "all" : apiStatus(status),
         },
       });
       const { items: rows, total } = res.data || {};
@@ -136,22 +148,21 @@ export default function VerifyUsers() {
       setErr(e?.response?.data?.message || e?.message || "Failed to open request");
     } finally {
       setLoadingCurrent(false);
-      // focus student search after open
       setTimeout(() => stuSearchRef.current?.focus(), 350);
     }
   };
 
-  // server-side totals/paging
+  // totals/paging
   const total = totalRemote;
   const pageCount = Math.max(1, Math.ceil(Math.max(0, total) / Math.max(1, limit)));
-  const pageRows = items; // API already returned paginated items
+  const pageRows = items;
 
-  // auto-refetch on page/limit/q changes
+  // auto-refetch on key changes
   useEffect(() => {
     if (!token) return;
     fetchRequests();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, page, limit, q]);
+  }, [token, page, limit, q, status]);
 
   // student search
   const searchStudents = async (qq) => {
@@ -170,7 +181,7 @@ export default function VerifyUsers() {
       const arr = Array.isArray(res.data) ? res.data : [];
       setStuResults(arr);
       return arr;
-    } catch (e) {
+    } catch {
       setStuResults([]);
       return [];
     } finally {
@@ -178,13 +189,12 @@ export default function VerifyUsers() {
     }
   };
 
-  // auto-match by full name + heuristics
   const autoMatch = async () => {
     if (!current) return;
     const full = current?.personal?.fullName || current?.user?.fullName || "";
     if (!full) return;
     setStuQ(full);
-    const arr = await searchStudents(full); // use fresh results to avoid race
+    const arr = await searchStudents(full);
     const scored = (arr || []).map((s) => {
       let score = nameSimilarity(full, s?.fullName || "");
       const gradYearReq = (current?.education?.graduationDate || "").slice(0, 4);
@@ -197,7 +207,7 @@ export default function VerifyUsers() {
     if (top) setPickedStudent(top);
   };
 
-  // verify action (queued = 202)
+  // actions
   const doVerify = async () => {
     if (!current?._id || !pickedStudent?._id) return;
     setActing(true);
@@ -211,15 +221,14 @@ export default function VerifyUsers() {
       setShowVerify(false);
       setCurrent(null);
       setPickedStudent(null);
-      await fetchRequests(); // refresh list
     } catch (e) {
       alert(e?.response?.data?.message || e?.message || "Failed to verify");
     } finally {
       setActing(false);
+      // state changes trigger refetch via useEffect
     }
   };
 
-  // reject action (queued = 202)
   const doReject = async () => {
     if (!current?._id || !rejectReason.trim()) return;
     setActing(true);
@@ -235,7 +244,6 @@ export default function VerifyUsers() {
       setCurrent(null);
       setPickedStudent(null);
       setRejectReason("");
-      await fetchRequests();
     } catch (e) {
       alert(e?.response?.data?.message || e?.message || "Failed to reject");
     } finally {
@@ -243,46 +251,58 @@ export default function VerifyUsers() {
     }
   };
 
+  // Reset → restore defaults
+  const resetAll = () => {
+    setQ(DEFAULTS.q);
+    setStatus(DEFAULTS.status);
+    setPage(DEFAULTS.page);
+    setLimit(DEFAULTS.limit);
+    // useEffect will refetch with new state
+  };
+
+  const statusLabel =
+    status === "unverified"
+      ? "Unverified (Pending)"
+      : status.charAt(0).toUpperCase() + status.slice(1);
+
   return (
     <section className="container py-4">
-      {/* Header & toolbar */}
-      <div className="d-flex align-items-center justify-content-between mb-3">
+      {/* Title row */}
+      <div className="d-flex align-items-center justify-content-between mb-2">
         <h1 className="h4 mb-0">Verify Users (Mobile Requests)</h1>
-        <div className="d-flex align-items-center gap-2">
-          <Form
-            className="d-flex"
-            onSubmit={(e) => {
-              e.preventDefault();
-              setPage(1);
-              fetchRequests();
-            }}
-          >
-            <InputGroup>
-              <InputGroup.Text>
-                <FaSearch />
-              </InputGroup.Text>
-              <Form.Control
-                placeholder="Search by name, email, DID, status…"
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setPage(1);
-                }}
-                style={{ width: 320 }}
-              />
-              <Button
-                type="button"
-                variant="outline-secondary"
-                onClick={() => {
-                  setQ("");
-                  setPage(1);
-                }}
-              >
-                Reset
-              </Button>
-            </InputGroup>
-          </Form>
+      </div>
 
+      {/* Search row with Refresh + Settings on the same row */}
+      <Form
+        className="mb-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          setPage(1);
+          // useEffect will refetch
+        }}
+      >
+        <InputGroup>
+          <InputGroup.Text>
+            <FaSearch />
+          </InputGroup.Text>
+          <Form.Control
+            placeholder="Search by name, email, DID, status…"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setPage(1);
+            }}
+          />
+          <Button
+            type="button"
+            variant="outline-secondary"
+            onClick={resetAll}
+            title="Clear search and restore default filters"
+          >
+            Reset
+          </Button>
+
+          {/* Refresh & Settings inline */}
           <Button
             type="button"
             variant="outline-primary"
@@ -290,24 +310,25 @@ export default function VerifyUsers() {
             disabled={loading}
             title="Refresh"
           >
-            {loading ? (
-              <Spinner size="sm" animation="border" />
-            ) : (
-              <>
-                <FaSync className="me-1" /> Refresh
-              </>
-            )}
+            {loading ? <Spinner size="sm" animation="border" /> : <><FaSync className="me-1" /> Refresh</>}
           </Button>
-
           <Button
             type="button"
             variant="outline-dark"
             onClick={() => setShowSettings(true)}
-            title="Settings"
+            title="Filters"
           >
             <FaCog className="me-1" /> Settings
           </Button>
-        </div>
+        </InputGroup>
+      </Form>
+
+      {/* Filter tags under the search input (like StudentProfiles) */}
+      <div className="mb-3 d-flex flex-wrap gap-2">
+        {q ? <Badge bg="light" text="dark">q: {q}</Badge> : <Badge bg="light" text="dark">q: (empty)</Badge>}
+        <Badge bg="light" text="dark">Status: {statusLabel}</Badge>
+        <Badge bg="light" text="dark">Page size: {limit}</Badge>
+        <Badge bg="secondary">Total: {total}</Badge>
       </div>
 
       {err && (
@@ -320,9 +341,7 @@ export default function VerifyUsers() {
       <Card>
         <Card.Header className="bg-light d-flex justify-content-between align-items-center">
           <strong>Verification Requests</strong>
-          <span className="text-muted small">
-            {total ? `Total ${total}` : "No requests"}
-          </span>
+          <span className="text-muted small">{total ? `Total ${total}` : "No requests"}</span>
         </Card.Header>
         <Card.Body className="p-0">
           <div className="table-responsive">
@@ -352,38 +371,23 @@ export default function VerifyUsers() {
                     return (
                       <tr key={r?._id || i}>
                         <td className="text-muted">{i}</td>
-                        <td title={r?.createdAt || ""}>
-                          {ts ? ts.toLocaleString() : "—"}
-                        </td>
+                        <td title={r?.createdAt || ""}>{ts ? ts.toLocaleString() : "—"}</td>
                         <td>
                           <div className="d-flex flex-column">
-                            <span className="fw-semibold">
-                              {u?.fullName || u?.username || "—"}
-                            </span>
+                            <span className="fw-semibold">{u?.fullName || u?.username || "—"}</span>
                             <span className="text-muted small">{u?.email || "—"}</span>
                             <span className="text-muted small">{shortId(u?._id)}</span>
                           </div>
                         </td>
-                        <td
-                          className="text-truncate"
-                          style={{ maxWidth: 220 }}
-                          title={r?.did || ""}
-                        >
+                        <td className="text-truncate" style={{ maxWidth: 220 }} title={r?.did || ""}>
                           {r?.did || "—"}
                         </td>
                         <td>
-                          <Badge bg={statusVariant(r?.status)}>
-                            {r?.status || "pending"}
-                          </Badge>
+                          <Badge bg={statusVariant(r?.status)}>{r?.status || "pending"}</Badge>
                         </td>
                         <td>
                           <div className="d-flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline-secondary"
-                              onClick={() => openVerify(r._id)}
-                              title="Open"
-                            >
+                            <Button size="sm" variant="outline-secondary" onClick={() => openVerify(r._id)} title="Open">
                               <FaEye className="me-1" />
                               Open
                             </Button>
@@ -404,24 +408,12 @@ export default function VerifyUsers() {
           </div>
         </Card.Body>
         <Card.Footer className="d-flex align-items-center justify-content-between">
-          <div className="text-muted small">
-            Page {page} of {pageCount}
-          </div>
+          <div className="text-muted small">Page {page} of {pageCount}</div>
           <div className="d-flex gap-2">
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => setPage(1)}
-              disabled={page <= 1}
-            >
+            <Button size="sm" variant="outline-secondary" onClick={() => setPage(1)} disabled={page <= 1}>
               « First
             </Button>
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
+            <Button size="sm" variant="outline-secondary" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
               ‹ Prev
             </Button>
             <Form.Select
@@ -439,33 +431,42 @@ export default function VerifyUsers() {
                 </option>
               ))}
             </Form.Select>
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-              disabled={page >= pageCount}
-            >
+            <Button size="sm" variant="outline-secondary" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount}>
               Next ›
             </Button>
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => setPage(pageCount)}
-              disabled={page >= pageCount}
-            >
+            <Button size="sm" variant="outline-secondary" onClick={() => setPage(pageCount)} disabled={page >= pageCount}>
               Last »
             </Button>
           </div>
         </Card.Footer>
       </Card>
 
-      {/* Settings modal (placeholder) */}
+      {/* Settings modal */}
       <Modal show={showSettings} onHide={() => setShowSettings(false)} centered>
         <Modal.Header closeButton>
-          <Modal.Title>List Settings</Modal.Title>
+          <Modal.Title>List Filters</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <div className="text-muted">No additional settings yet.</div>
+          <Form>
+            <Form.Group className="mb-3">
+              <Form.Label>Status</Form.Label>
+              <Form.Select
+                value={status}
+                onChange={(e) => {
+                  setStatus(e.target.value);
+                  setPage(1);
+                }}
+              >
+                <option value="unverified">Unverified (Pending)</option>
+                <option value="verified">Verified</option>
+                <option value="rejected">Rejected</option>
+                <option value="all">All</option>
+              </Form.Select>
+              <Form.Text className="text-muted">
+                “Unverified” maps to pending verification requests.
+              </Form.Text>
+            </Form.Group>
+          </Form>
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowSettings(false)}>
@@ -475,13 +476,7 @@ export default function VerifyUsers() {
       </Modal>
 
       {/* Verify / Compare modal */}
-      <Modal
-        show={showVerify}
-        onHide={() => setShowVerify(false)}
-        centered
-        size="xl"
-        scrollable
-      >
+      <Modal show={showVerify} onHide={() => setShowVerify(false)} centered size="xl" scrollable>
         <Modal.Header closeButton>
           <Modal.Title>Verify Account & Link Student</Modal.Title>
         </Modal.Header>
@@ -494,7 +489,7 @@ export default function VerifyUsers() {
             <div className="text-muted">No data.</div>
           ) : (
             <Row className="g-3">
-              {/* LEFT: Mobile request (to verify) */}
+              {/* LEFT: Mobile request */}
               <Col lg={6}>
                 <Card className="h-100">
                   <Card.Header className="bg-light">
@@ -505,10 +500,7 @@ export default function VerifyUsers() {
                       <div className="text-muted small">Request ID</div>
                       <div>
                         {shortId(current._id)}{" "}
-                        <Badge
-                          bg={statusVariant(current.status)}
-                          className="ms-2"
-                        >
+                        <Badge bg={statusVariant(current.status)} className="ms-2">
                           {current.status}
                         </Badge>
                       </div>
@@ -517,17 +509,13 @@ export default function VerifyUsers() {
                     <Row className="mb-3">
                       <Col md={6}>
                         <div className="text-muted small">Full Name</div>
-                        <div className="fw-semibold">
-                          {safe(current?.personal?.fullName)}
-                        </div>
+                        <div className="fw-semibold">{safe(current?.personal?.fullName)}</div>
                       </Col>
                       <Col md={6}>
                         <div className="text-muted small">Birth Date</div>
                         <div>
                           {current?.personal?.birthDate
-                            ? new Date(
-                                current.personal.birthDate
-                              ).toLocaleDateString()
+                            ? new Date(current.personal.birthDate).toLocaleDateString()
                             : "—"}
                         </div>
                       </Col>
@@ -559,11 +547,7 @@ export default function VerifyUsers() {
                       <Col md={6}>
                         <div className="text-muted small mb-1">Selfie Image</div>
                         {current?.selfieImage?.url ? (
-                          <a
-                            href={current.selfieImage.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
+                          <a href={current.selfieImage.url} target="_blank" rel="noreferrer">
                             <img
                               src={current.selfieImage.url}
                               alt="Selfie"
@@ -583,11 +567,7 @@ export default function VerifyUsers() {
                       <Col md={6}>
                         <div className="text-muted small mb-1">ID Image</div>
                         {current?.idImage?.url ? (
-                          <a
-                            href={current.idImage.url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
+                          <a href={current.idImage.url} target="_blank" rel="noreferrer">
                             <img
                               src={current.idImage.url}
                               alt="ID"
@@ -614,12 +594,7 @@ export default function VerifyUsers() {
                 <Card className="h-100">
                   <Card.Header className="bg-light d-flex justify-content-between align-items-center">
                     <strong>Pick Student to Link</strong>
-                    <Button
-                      size="sm"
-                      variant="outline-primary"
-                      onClick={autoMatch}
-                      title="Auto-match by name & year"
-                    >
+                    <Button size="sm" variant="outline-primary" onClick={autoMatch} title="Auto-match by name & year">
                       <FaLink className="me-1" />
                       Auto-match
                     </Button>
@@ -642,11 +617,7 @@ export default function VerifyUsers() {
                           onChange={(e) => setStuQ(e.target.value)}
                         />
                         <Button type="submit" variant="primary" disabled={stuLoading}>
-                          {stuLoading ? (
-                            <Spinner size="sm" animation="border" />
-                          ) : (
-                            "Search"
-                          )}
+                          {stuLoading ? <Spinner size="sm" animation="border" /> : "Search"}
                         </Button>
                       </InputGroup>
                     </Form>
@@ -654,10 +625,7 @@ export default function VerifyUsers() {
                     <Row className="g-3">
                       <Col md={6}>
                         <div className="text-muted small mb-1">Search Results</div>
-                        <div
-                          className="border rounded"
-                          style={{ maxHeight: 260, overflow: "auto" }}
-                        >
+                        <div className="border rounded" style={{ maxHeight: 260, overflow: "auto" }}>
                           {stuLoading ? (
                             <div className="p-3 text-center">
                               <Spinner animation="border" />
@@ -673,9 +641,7 @@ export default function VerifyUsers() {
                                   className="d-flex justify-content-between align-items-center"
                                 >
                                   <div className="me-2">
-                                    <div className="fw-semibold">
-                                      {s.fullName || "Unnamed"}
-                                    </div>
+                                    <div className="fw-semibold">{s.fullName || "Unnamed"}</div>
                                     <div className="text-muted small">
                                       {s.studentNumber || "—"} • {s.program || "—"}
                                     </div>
@@ -708,30 +674,21 @@ export default function VerifyUsers() {
                               />
                             ) : null}
                             <div className="mt-2">
-                              <div className="fw-semibold">
-                                {pickedStudent.fullName}
-                              </div>
+                              <div className="fw-semibold">{pickedStudent.fullName}</div>
                               <div className="text-muted small">
-                                #{pickedStudent.studentNumber || "—"} •{" "}
-                                {pickedStudent.program || "—"}
+                                #{pickedStudent.studentNumber || "—"} • {pickedStudent.program || "—"}
                               </div>
                               <div className="text-muted small">
                                 Grad:{" "}
                                 {pickedStudent.dateGraduated
-                                  ? new Date(
-                                      pickedStudent.dateGraduated
-                                    ).toLocaleDateString()
+                                  ? new Date(pickedStudent.dateGraduated).toLocaleDateString()
                                   : "—"}
                               </div>
-                              <div className="text-muted small">
-                                ID: {shortId(pickedStudent._id)}
-                              </div>
+                              <div className="text-muted small">ID: {shortId(pickedStudent._id)}</div>
                             </div>
                           </div>
                         ) : (
-                          <div className="text-muted small">
-                            Pick a student from the list.
-                          </div>
+                          <div className="text-muted small">Pick a student from the list.</div>
                         )}
                       </Col>
                     </Row>
@@ -743,11 +700,7 @@ export default function VerifyUsers() {
         </Modal.Body>
         <Modal.Footer className="d-flex justify-content-between">
           <div className="text-muted small">
-            {current?.did ? (
-              <>
-                DID: <span className="text-monospace">{current.did}</span>
-              </>
-            ) : null}
+            {current?.did ? <>DID: <span className="text-monospace">{current.did}</span></> : null}
           </div>
           <div className="d-flex gap-2">
             <Button
@@ -765,11 +718,7 @@ export default function VerifyUsers() {
               disabled={!current || !pickedStudent || acting}
               title="Verify & Link to selected student"
             >
-              {acting ? (
-                <Spinner size="sm" animation="border" className="me-2" />
-              ) : (
-                <FaCheck className="me-1" />
-              )}
+              {acting ? <Spinner size="sm" animation="border" className="me-2" /> : <FaCheck className="me-1" />}
               Verify & Link
             </Button>
           </div>
@@ -792,29 +741,15 @@ export default function VerifyUsers() {
               onChange={(e) => setRejectReason(e.target.value)}
               placeholder="Optional: why is this request rejected?"
             />
-            <Form.Text className="text-muted">
-              This reason may be shown to the requester.
-            </Form.Text>
+            <Form.Text className="text-muted">This reason may be shown to the requester.</Form.Text>
           </Form.Group>
         </Modal.Body>
         <Modal.Footer>
-          <Button
-            variant="secondary"
-            onClick={() => setShowReject(false)}
-            disabled={acting}
-          >
+          <Button variant="secondary" onClick={() => setShowReject(false)} disabled={acting}>
             Cancel
           </Button>
-          <Button
-            variant="danger"
-            onClick={doReject}
-            disabled={acting || !current}
-          >
-            {acting ? (
-              <Spinner size="sm" animation="border" className="me-2" />
-            ) : (
-              <FaTimes className="me-1" />
-            )}
+          <Button variant="danger" onClick={doReject} disabled={acting || !current}>
+            {acting ? <Spinner size="sm" animation="border" className="me-2" /> : <FaTimes className="me-1" />}
             Reject Request
           </Button>
         </Modal.Footer>

@@ -7,7 +7,7 @@ import NotFound from './pages/NotFound';
 
 // Auth / Public
 import Login from './pages/Login';
-import Loading from './Loading'; // 👈 NEW
+import Loading from './Loading';
 import Index from './pages/landing_portal';
 import Verification from './pages/landing_portal/sub/verification_portal';
 import Services from './pages/landing_portal/sub/services';
@@ -42,9 +42,16 @@ export default function AppRoutes() {
       {/* Public routes */}
       <Route path="/landing-page" element={<Index />} />
       <Route path="/landing-page/services" element={<Services />} />
+
+      {/* ✅ Portal without param (e.g. you show an instruction page) */}
       <Route path="/verification-portal" element={<Verification />} />
+      {/* ✅ Portal with :sessionId param (this is the one your mobile link hits) */}
+      <Route path="/verification-portal/:sessionId" element={<Verification />} />
+      {/* ✅ Optional alias in case any links still use /verify/:sessionId */}
+      <Route path="/verify/:sessionId" element={<Verification />} />
+
       <Route path="/login" element={<Login />} />
-      <Route path="/loading" element={<Loading />} /> {/* 👈 NEW: preloads dashboard + blockchain */}
+      <Route path="/loading" element={<Loading />} />
 
       {/* Protected (wrapped by Layout via <Outlet />) */}
       <Route element={<Layout />}>
@@ -53,7 +60,6 @@ export default function AppRoutes() {
 
         {/* Accounts */}
         <Route path="accounts/staff-admin" element={<AccountsAdminStaff />} />
-        {/* Support both with and without id. Sidebar links to /accounts/audit-logs/:id */}
         <Route path="accounts/audit-logs/:id" element={<AuditLogs />} />
         <Route path="accounts/audit-logs" element={<AuditLogs />} />
         <Route path="accounts/verify-users" element={<VerifyUsers />} />
