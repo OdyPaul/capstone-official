@@ -72,15 +72,22 @@ function Progress({ value }) {
 
 /* ============================== Page ============================== */
 export default function VerificationPortal() {
-  const { sessionId } = useParams();
+  // 🔧 Minimal fix: accept any route param name (sessionId / session / id / first param)
+  const params = useParams();
+  const sessionId = params.sessionId || params.session || params.id || Object.values(params)[0] || "";
+
   const location = useLocation();
-
   const qs = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const cidFromUrl = qs.get("credential_id") || "";           // 👈 present in link?
-  const hasCidInLink = !!cidFromUrl;                          // 👈 drives the 3-step vs 4-step UI
 
-  // steps definition depends on presence of credential_id in URL
-  const steps = hasCidInLink
+  // Presence flags (no exposure of actual identifiers)
+  const hasHintInLink = qs.has("hint");
+  const hasCidInLink = qs.has("credential_id"); // still supported for legacy links, but we won't show it
+
+  // 🔧 Minimal fix: having a sessionId is itself fast-path
+  const hasFastPath = !!sessionId || hasHintInLink || hasCidInLink;
+
+  // Steps depend on "fast path" presence (hint/credential_id/sessionId)
+  const steps = hasFastPath
     ? [{ label: "Fill up" }, { label: "Request permission" }, { label: "Result" }]
     : [{ label: "Fill up" }, { label: "Provide VC Barcode" }, { label: "Request permission" }, { label: "Result" }];
 
@@ -95,12 +102,13 @@ export default function VerificationPortal() {
   });
   const formReady = form.name.trim() && form.org.trim();
 
-  // Step 2 (only when !hasCidInLink): decode VC barcode/paste link (client-side only)
+  // Optional: step 2 (only when !hasFastPath): QR/link intake (we DO NOT show raw credential_id)
   const [pastedLink, setPastedLink] = useState("");
   const [qrError, setQrError] = useState("");
-  const [extractedCid, setExtractedCid] = useState(cidFromUrl); // seed from URL if present
+  const [hasDetectedCid, setHasDetectedCid] = useState(false); // boolean only (no value shown/stored)
 
-  // Step 3/Result: waiting & result
+  // Result/polling
+  
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState(null);
@@ -149,12 +157,12 @@ export default function VerificationPortal() {
         setResult(data.result);
         setProgress(100);
         pollingRef.current = false;
-        setStep(hasCidInLink ? 3 : 4); // 👈 result step depends on how many steps we have
+        setStep(hasFastPath ? 3 : 4);
         return;
       }
       if (Date.now() - start > timeoutMs) {
         setResult({ valid: false, reason: "timeout_waiting_for_holder" });
-        setStep(hasCidInLink ? 3 : 4);
+        setStep(hasFastPath ? 3 : 4);
         pollingRef.current = false;
         return;
       }
@@ -162,7 +170,7 @@ export default function VerificationPortal() {
     }
   }
 
-  // ---- Step 2 helpers (only used if !hasCidInLink) ----
+  // ---- Step 2 helpers (only used if !hasFastPath) ----
   async function decodeQrFileClient(file) {
     setQrError("");
     if (!file) {
@@ -187,20 +195,23 @@ export default function VerificationPortal() {
         const text = res?.getText?.() || "";
         if (!text) throw new Error("QR not recognized");
 
-        let parsedCid = "";
-        // JSON -> credential_id
+        // We only care that a valid credential link/QR exists — do not show/store its id.
+        let detected = false;
+
+        // JSON containing credential_id
         try {
           const o = JSON.parse(text);
-          if (o && o.credential_id) parsedCid = String(o.credential_id);
+          if (o && o.credential_id) detected = true;
         } catch {
-          // URL -> ?credential_id=
+          // URL with ?credential_id=
           try {
             const u = new URL(text);
-            parsedCid = u.searchParams.get("credential_id") || "";
+            if (u.searchParams.get("credential_id")) detected = true;
           } catch {}
         }
-        if (!parsedCid) throw new Error("QR missing credential_id");
-        setExtractedCid(parsedCid);
+
+        if (!detected) throw new Error("QR missing credential info");
+        setHasDetectedCid(true);
       } finally {
         URL.revokeObjectURL(url);
         reader.reset();
@@ -214,17 +225,16 @@ export default function VerificationPortal() {
     setPastedLink(link);
     try {
       const u = new URL(link);
-      const cid = u.searchParams.get("credential_id");
-      if (cid) setExtractedCid(cid);
+      // Only check presence; do not read or display the value.
+      if (u.searchParams.get("credential_id")) setHasDetectedCid(true);
     } catch {
       /* ignore non-URL */
     }
   }
 
-  // ---- Step "Request permission": call /begin only (never /present) ----
+  // ---- Step "Request permission": call /begin only (never /present here) ----
   async function requestPermission() {
-    const cid = extractedCid || cidFromUrl;
-    if (!formReady || !cid) return;
+    if (!formReady) return;
     setBusy(true);
     try {
       await postJSON(`/verification/session/${sessionId}/begin`, {
@@ -232,21 +242,14 @@ export default function VerificationPortal() {
         contact: form.name.trim(),
         purpose: form.purpose.trim() || "Credential verification",
       });
-      // Holder's phone will present after they approve; we just wait.
       setBusy(false);
-      // stay on the "Request permission" step while waiting
+      // Holder's phone will present after they approve; we just wait.
       pollUntilResult();
     } catch (err) {
       setBusy(false);
       alert(err.message || "Failed to request permission");
     }
   }
-
-  // keep extractedCid seeded from URL (one-time)
-  useEffect(() => {
-    if (cidFromUrl) setExtractedCid(cidFromUrl);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <main className="bg-success-subtle bg-gradient min-vh-100">
@@ -277,7 +280,7 @@ export default function VerificationPortal() {
       <section className="container">
         <div className="card shadow-sm mt-n4">
           <div className="card-body p-4 p-md-5">
-            {/* Step 1: Fill up (local only) */}
+            {/* Step 1: Fill up */}
             {step === 1 && (
               <>
                 <h2 className="h3 fw-bold text-dark">Fill up your details</h2>
@@ -288,8 +291,8 @@ export default function VerificationPortal() {
                   onSubmit={(e) => {
                     e.preventDefault();
                     if (!formReady) return;
-                    // If credential_id is already in the link, jump straight to "Request permission"
-                    setStep(hasCidInLink ? 2 : 2); // step 2 is different depending on flow
+                    // Proceed to next step; if fast path, that is "Request permission".
+                    setStep(2);
                   }}
                 >
                   <div className="col-md-3">
@@ -339,8 +342,8 @@ export default function VerificationPortal() {
               </>
             )}
 
-            {/* Step 2: Either "Provide VC Barcode" (no cid) OR "Request permission" (has cid) */}
-            {!hasCidInLink && step === 2 && (
+            {/* Step 2: Either "Provide VC Barcode" (no fast path) OR "Request permission" (fast path) */}
+            {!hasFastPath && step === 2 && (
               <>
                 <h2 className="h3 fw-bold text-dark">Provide the VC barcode</h2>
                 <p className="text-muted">Upload a QR image or paste a link that contains the credential.</p>
@@ -358,7 +361,7 @@ export default function VerificationPortal() {
                         value={pastedLink}
                         onChange={(e) => tryExtractCidFromLink(e.target.value)}
                       />
-                      <div className="form-text">We’ll extract <code>credential_id</code> if present (no upload).</div>
+                      <div className="form-text">We’ll only check that it contains a credential (we won’t display it).</div>
 
                       <hr />
 
@@ -385,8 +388,8 @@ export default function VerificationPortal() {
                       )}
 
                       <div className="mt-3 p-2 rounded bg-light border">
-                        <div className="small text-muted">Detected credential id:</div>
-                        <code className="small">{extractedCid || "—"}</code>
+                        <div className="small text-muted">Detected credential:</div>
+                        <code className="small">{hasDetectedCid ? "present" : "—"}</code>
                       </div>
 
                       <div className="mt-3 d-flex gap-2">
@@ -395,7 +398,7 @@ export default function VerificationPortal() {
                         </button>
                         <button
                           className="btn btn-success fw-semibold"
-                          disabled={!extractedCid}
+                          disabled={!hasDetectedCid}
                           onClick={() => setStep(3)}
                         >
                           Continue
@@ -448,8 +451,8 @@ export default function VerificationPortal() {
               </>
             )}
 
-            {/* When the link already has credential_id, step 2 is the "Request permission" view */}
-            {hasCidInLink && step === 2 && (
+            {/* Fast-path (hint or legacy credential_id or sessionId): directly request permission */}
+            {hasFastPath && step === 2 && (
               <>
                 <h2 className="h3 fw-bold text-dark">Request permission</h2>
                 <p className="text-muted">We’ll ask the holder to approve sending their credential.</p>
@@ -467,10 +470,6 @@ export default function VerificationPortal() {
                     <div className="col-sm-6">
                       <div className="small text-muted mt-2">Purpose</div>
                       <div className="fw-semibold">{form.purpose || "Credential verification"}</div>
-                    </div>
-                    <div className="col-sm-6">
-                      <div className="small text-muted mt-2">Credential ID (from link)</div>
-                      <div className="fw-semibold"><code>{extractedCid}</code></div>
                     </div>
                   </div>
 
@@ -480,57 +479,7 @@ export default function VerificationPortal() {
                     </button>
                     <button
                       className="btn btn-success fw-semibold"
-                      disabled={busy || !formReady || !extractedCid}
-                      onClick={requestPermission}
-                    >
-                      {busy ? "Requesting…" : "Request permission"}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <div className="d-flex align-items-center gap-2 mb-2">
-                    <div className="spinner-border spinner-border-sm text-success" role="status" />
-                    <span className="text-dark">Waiting for holder to approve…</span>
-                  </div>
-                  <Progress value={progress} />
-                </div>
-              </>
-            )}
-
-            {/* In the 4-step flow, step 3 is the "Request permission" view */}
-            {!hasCidInLink && step === 3 && (
-              <>
-                <h2 className="h3 fw-bold text-dark">Request permission</h2>
-                <p className="text-muted">We’ll ask the holder to approve sending their credential.</p>
-
-                <div className="border rounded-3 p-3">
-                  <div className="row g-2">
-                    <div className="col-sm-6">
-                      <div className="small text-muted">Your Name</div>
-                      <div className="fw-semibold">{form.name}</div>
-                    </div>
-                    <div className="col-sm-6">
-                      <div className="small text-muted">Organization</div>
-                      <div className="fw-semibold">{form.org}</div>
-                    </div>
-                    <div className="col-sm-6">
-                      <div className="small text-muted mt-2">Purpose</div>
-                      <div className="fw-semibold">{form.purpose || "Credential verification"}</div>
-                    </div>
-                    <div className="col-sm-6">
-                      <div className="small text-muted mt-2">Credential ID (decoded)</div>
-                      <div className="fw-semibold"><code>{extractedCid}</code></div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 d-flex gap-2">
-                    <button className="btn btn-outline-secondary" onClick={() => setStep(2)}>
-                      Back
-                    </button>
-                    <button
-                      className="btn btn-success fw-semibold"
-                      disabled={busy || !formReady || !extractedCid}
+                      disabled={busy || !formReady}
                       onClick={requestPermission}
                     >
                       {busy ? "Requesting…" : "Request permission"}
@@ -549,7 +498,7 @@ export default function VerificationPortal() {
             )}
 
             {/* Result (step 3 in 3-step flow; step 4 in 4-step flow) */}
-            {(hasCidInLink ? step === 3 : step === 4) && (
+            {(hasFastPath ? step === 3 : step === 4) && (
               <>
                 <h2 className="h3 fw-bold text-dark">Result</h2>
                 {result?.valid ? (
