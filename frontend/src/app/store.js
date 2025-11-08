@@ -7,7 +7,7 @@ import vcReducer from "../features/draft_vc/vcSlice";
 import templateReducer from "../features/template/templateSlice"
 import issuanceReducer from '../features/issuance/issuanceSlice'
 import accountReducer from '../features/accounts/accountSlice'
-
+import requestsReducer from "../features/request/requestsSlice";
 import {
   persistStore,
   persistReducer,
@@ -37,7 +37,8 @@ export const store = configureStore({
     vc: vcReducer,  
     template:templateReducer,  
     issuance: issuanceReducer,  
-    accounts: accountReducer,          // ❌ always fresh
+    accounts: accountReducer,   
+    requests:requestsReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

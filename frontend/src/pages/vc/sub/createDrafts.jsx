@@ -15,7 +15,7 @@ import {
   Alert,
   Modal,
 } from "react-bootstrap";
-import { NavLink } from "react-router-dom";
+import { NavLink, useSearchParams } from "react-router-dom";
 import { FaSearch, FaCog, FaArrowLeft, FaEye } from "react-icons/fa";
 import { API_URL } from "../../../../config";
 
@@ -322,6 +322,8 @@ function DuplicateErrorModal({ show, onHide, duplicates = [] }) {
 export default function CreateDrafts() {
   const dispatch = useDispatch();
   const token = useSelector((s) => s.auth?.user?.token);
+  const [searchParams] = useSearchParams();
+  const qsStudentNumber = searchParams.get("studentNumber") || "";
 
   const {
     students,
@@ -396,8 +398,15 @@ export default function CreateDrafts() {
     return ["All", ...fromStudents];
   }, [allPrograms, students]);
 
-  // Load saved filters (students) on mount
+  // Load saved filters (students) on mount — BUT if studentNumber is in URL, prefill and APPLY immediately.
   useEffect(() => {
+    if (qsStudentNumber) {
+      setQ(qsStudentNumber);                          // prefill input
+      dispatch(getPassingStudents({ q: qsStudentNumber })); // auto-apply
+      setCurrentPage(1);
+      return; // don't overwrite with saved filters
+    }
+
     const saved = (() => {
       try {
         return JSON.parse(localStorage.getItem("lastStudentFilters")) || {};
@@ -430,13 +439,13 @@ export default function CreateDrafts() {
       setYearCustomPending("");
     }
 
-    // Initial server fetch (q + program only)
+    // Initial server fetch (q + program only) when no studentNumber in URL
     const initialServerFilters = {
       ...(saved.q ? { q: saved.q } : {}),
       ...(saved.programs && saved.programs !== "All" ? { programs: saved.programs } : {}),
     };
     dispatch(getPassingStudents(initialServerFilters));
-  }, [dispatch, quickYears]);
+  }, [dispatch, quickYears, qsStudentNumber]);
 
   // Load templates (once per token)
   useEffect(() => {
@@ -1195,7 +1204,7 @@ export default function CreateDrafts() {
                       setYearCustomPending(e.target.value.replace(/[^\d]/g, ""))
                     }
                   />
-                  <Form.Text className="text-muted">
+                  <Form.Text className="textMuted">
                     Students who graduated in this year or later will be shown.
                   </Form.Text>
                 </div>

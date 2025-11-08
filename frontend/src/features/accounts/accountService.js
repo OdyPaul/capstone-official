@@ -1,11 +1,12 @@
 // src/features/accounts/accountService.js
 import axios from 'axios';
+// ⬇️ was '../../../config' which is one level too high from this file
 import { API_URL } from '../../../config';
 import { getToken } from '../auth/authService';
 
 const headers = () => {
   const t = getToken();
-  return { headers: { Authorization: `Bearer ${t}` } };
+  return { headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } };
 };
 
 const list = async () => {
@@ -14,14 +15,12 @@ const list = async () => {
 };
 
 const create = async (payload) => {
-  // payload: { username, fullName, age, address, gender, email, password, contactNo, role, profilePicture }
   const { data } = await axios.post(`${API_URL}/api/web/users`, payload, headers());
   return data.user; // controller returns { user }
 };
 
-// NEW: update
 const update = async (id, payload) => {
-  // payload may include: { username, fullName, age, address, gender, email, password?, contactNo, role, profilePicture, profileImageId? }
+  // include currentPassword when provided by UI
   const { data } = await axios.put(`${API_URL}/api/web/users/${id}`, payload, headers());
   return data.user; // controller returns { user }
 };

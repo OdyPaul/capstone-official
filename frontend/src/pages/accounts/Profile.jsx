@@ -3,7 +3,9 @@ import React, { useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Card, Row, Col, Form, Button, Badge, Spinner, Modal } from 'react-bootstrap';
 import { FaEdit, FaPlus } from 'react-icons/fa';
+// ⬇️ fix import: file is accountsSlice.js (plural)
 import { updateAccount } from '../../features/accounts/accountSlice';
+import { setUser } from '../../features/auth/authSlice';
 
 const ROLES = ['admin', 'superadmin', 'developer'];
 
@@ -12,7 +14,7 @@ export default function Profile() {
   const me = useSelector((s) => s.auth.user);
   const accountsLoading = useSelector((s) => s.accounts.isLoading);
 
-  const [editMode, setEditMode] = useState(false); // ⬅️ lock inputs until user clicks Edit
+  const [editMode, setEditMode] = useState(false);
 
   const [form, setForm] = useState(() => ({
     username: me?.username || '',
@@ -44,38 +46,66 @@ export default function Profile() {
 
   const canChangeRole = me?.role === 'superadmin';
 
-  // ===== Confirm password modal (for superadmin edits) =====
+  // ===== Confirm password modal (now used for ALL roles) =====
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmPwd, setConfirmPwd] = useState('');
-
   const [saving, setSaving] = useState(false);
 
-  const reallySave = async (extra = {}) => {
-    if (!me?._id) return;
-    try {
-      setSaving(true);
-      const payload = { ...form, age: form.age ? Number(form.age) : undefined, ...extra };
-      if (!payload.password) delete payload.password; // do not overwrite if blank
-      if (!canChangeRole) delete payload.role;
-      await dispatch(updateAccount({ id: me._id, data: payload })).unwrap();
-      alert('Profile updated');
-      setEditMode(false);
-      setConfirmPwd('');
-    } catch (err) {
-      alert(err || 'Failed to update profile');
-    } finally {
-      setSaving(false);
+ // replace the whole reallySave with this version
+const reallySave = async () => {
+  if (!me?._id) return;
+  if (!confirmPwd.trim()) {
+    alert('Please enter your current password to confirm.');
+    return;
+  }
+
+  try {
+    setSaving(true);
+
+    const payload = {
+      ...form,
+      age: form.age ? Number(form.age) : undefined,
+      currentPassword: confirmPwd.trim(),
+    };
+    if (!payload.password) delete payload.password;     // don’t overwrite if blank
+    if (!canChangeRole) delete payload.role;            // non-superadmin cannot change role
+
+    // run the update
+    const updated = await dispatch(updateAccount({ id: me._id, data: payload })).unwrap();
+
+    // 🔥 hydrate header immediately if you updated yourself
+    if (updated && me && updated._id === me._id) {
+      const next = {
+        ...me, // keep token and any fields your API doesn't return
+        username: updated.username ?? me.username,
+        fullName: updated.fullName ?? me.fullName,
+        email: updated.email ?? me.email,
+        role: updated.role ?? me.role,
+        profilePicture: updated.profilePicture ?? me.profilePicture,
+        contactNo: updated.contactNo ?? me.contactNo,
+        gender: updated.gender ?? me.gender,
+        address: updated.address ?? me.address,
+        age: (typeof updated.age !== 'undefined') ? updated.age : me.age,
+      };
+      try { localStorage.setItem('user', JSON.stringify(next)); } catch {}
+      dispatch(setUser(next));
     }
-  };
+
+    alert('Profile updated');
+    setEditMode(false);
+    setConfirmPwd('');
+  } catch (err) {
+    alert(err || 'Failed to update profile');
+  } finally {
+    setSaving(false);
+  }
+};
+
 
   const onClickSave = (e) => {
     e.preventDefault();
-    if (me?.role === 'superadmin') {
-      // require password confirmation for superadmins
-      setShowConfirm(true);
-    } else {
-      reallySave();
-    }
+    // ⬇️ Always require current password to satisfy backend rule
+    setShowConfirm(true);
   };
 
   const headerBadge = useMemo(
@@ -93,24 +123,35 @@ export default function Profile() {
           </Button>
         ) : (
           <div className="d-flex gap-2">
-            <Button variant="secondary" onClick={() => { setEditMode(false); setForm({
-              username: me?.username || '',
-              fullName: me?.fullName || '',
-              age: me?.age ?? '',
-              address: me?.address || '',
-              gender: me?.gender || 'other',
-              email: me?.email || '',
-              password: '',
-              contactNo: me?.contactNo || '',
-              role: me?.role || 'admin',
-              profilePicture: me?.profilePicture || '',
-            }); setImgPreview(me?.profilePicture || ''); }}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setEditMode(false);
+                setForm({
+                  username: me?.username || '',
+                  fullName: me?.fullName || '',
+                  age: me?.age ?? '',
+                  address: me?.address || '',
+                  gender: me?.gender || 'other',
+                  email: me?.email || '',
+                  password: '',
+                  contactNo: me?.contactNo || '',
+                  role: me?.role || 'admin',
+                  profilePicture: me?.profilePicture || '',
+                });
+                setImgPreview(me?.profilePicture || '');
+              }}
+            >
               Cancel
             </Button>
-            <Button type="button" variant="success" disabled={saving || accountsLoading} onClick={onClickSave}>
-              {saving || accountsLoading ? (
-                <Spinner animation="border" size="sm" className="me-2" />
-              ) : null}
+            <Button
+              type="button"
+              variant="success"
+              disabled={saving || accountsLoading}
+              onClick={onClickSave}
+              title="Current password required to perform admin updates"
+            >
+              {saving || accountsLoading ? <Spinner animation="border" size="sm" className="me-2" /> : null}
               Update
             </Button>
           </div>
@@ -219,13 +260,15 @@ export default function Profile() {
         </Card.Body>
       </Card>
 
-      {/* ===== Confirm Password Modal for Superadmin Updates ===== */}
+      {/* ===== Confirm Password Modal (always shown on Update) ===== */}
       <Modal show={showConfirm} onHide={() => setShowConfirm(false)} centered>
         <Modal.Header closeButton>
           <Modal.Title>Confirm Update</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <p className="mb-2">As a <strong>superadmin</strong>, please enter your password to confirm this update.</p>
+          <p className="mb-2">
+            Current password required to perform admin updates.
+          </p>
           <Form.Control
             type="password"
             value={confirmPwd}
@@ -241,7 +284,7 @@ export default function Profile() {
             onClick={() => {
               if (!confirmPwd.trim()) return;
               setShowConfirm(false);
-              reallySave({ currentPassword: confirmPwd.trim() });
+              reallySave();
             }}
           >
             Confirm

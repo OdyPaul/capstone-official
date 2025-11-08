@@ -153,7 +153,7 @@ export default function ManageAccounts() {
     setShowEditModal(true);
   };
 
-  // ---------- CONFIRM MODAL (generic) ----------
+  // ---------- CONFIRM (discard) ----------
   const [confirmState, setConfirmState] = useState({ show: false, title: '', message: '' });
   const confirmActionRef = useRef(null);
   const askConfirm = (title, message, onConfirm) => {
@@ -177,27 +177,46 @@ export default function ManageAccounts() {
     }
   };
 
+  // ---------- NEW: Confirm Password modal (like Profile) ----------
+  const [showConfirmPwd, setShowConfirmPwd] = useState(false);
+  const [confirmPwd, setConfirmPwd] = useState('');
+
+  // Open confirm-password modal when admin clicks Save Changes
   const submitEdit = () => {
     if (!selectedUser) return;
-    askConfirm('Save changes?', 'Apply these updates to the account?', async () => {
-      try {
-        setIsSavingEdit(true);
-        const payload = {
-          ...editForm,
-          age: editForm.age ? Number(editForm.age) : undefined,
-        };
-        if (!payload.password) delete payload.password;
-        await dispatch(updateAccount({ id: selectedUser._id, data: payload })).unwrap();
-        setIsSavingEdit(false);
-        setShowEditModal(false);
-        setSelectedUser(null);
-        alert('Account updated.');
-        dispatch(fetchAccounts());
-      } catch (err) {
-        setIsSavingEdit(false);
-        alert(err || 'Failed to update account');
-      }
-    });
+    setShowConfirmPwd(true);
+  };
+
+  // Actually save after entering current password
+  const reallySaveEdit = async () => {
+    if (!selectedUser) return;
+    if (!confirmPwd.trim()) {
+      alert('Please enter your current password to confirm.');
+      return;
+    }
+    try {
+      setIsSavingEdit(true);
+
+      const payload = {
+        ...editForm,
+        age: editForm.age ? Number(editForm.age) : undefined,
+        currentPassword: confirmPwd.trim(), // 🔐 pass admin’s current password
+      };
+      if (!payload.password) delete payload.password; // don’t overwrite if blank
+
+      await dispatch(updateAccount({ id: selectedUser._id, data: payload })).unwrap();
+
+      setIsSavingEdit(false);
+      setShowConfirmPwd(false);
+      setConfirmPwd('');
+      setShowEditModal(false);
+      setSelectedUser(null);
+      alert('Account updated.');
+      dispatch(fetchAccounts());
+    } catch (err) {
+      setIsSavingEdit(false);
+      alert(err || 'Failed to update account');
+    }
   };
 
   return (
@@ -629,13 +648,38 @@ export default function ManageAccounts() {
         </Modal.Footer>
       </Modal>
 
-      {/* Confirm modal (generic) */}
+      {/* Confirm modal (discard) */}
       <Modal show={confirmState.show} onHide={closeConfirm} centered>
         <Modal.Header closeButton><Modal.Title>{confirmState.title || 'Confirm'}</Modal.Title></Modal.Header>
         <Modal.Body>{confirmState.message || 'Are you sure?'}</Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={closeConfirm}>Cancel</Button>
           <Button variant="primary" onClick={doConfirm}>Confirm</Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* 🔐 Confirm Password modal for saving edits */}
+      <Modal show={showConfirmPwd} onHide={() => setShowConfirmPwd(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title>Confirm Update</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p className="mb-2">Current password required to perform admin updates.</p>
+          <Form.Control
+            type="password"
+            value={confirmPwd}
+            onChange={(e) => setConfirmPwd(e.target.value)}
+            placeholder="Enter your current password"
+            autoFocus
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); reallySaveEdit(); } }}
+          />
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowConfirmPwd(false)}>Cancel</Button>
+          <Button variant="primary" onClick={reallySaveEdit} disabled={isSavingEdit}>
+            {isSavingEdit ? <Spinner animation="border" size="sm" className="me-2" /> : null}
+            Confirm
+          </Button>
         </Modal.Footer>
       </Modal>
 

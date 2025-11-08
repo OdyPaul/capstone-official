@@ -249,13 +249,13 @@ function Sidebar() {
             {isDevOrSuper && (
               <Nav.Link
                 as={NavLink}
-                to="/accounts/staff-admin"
+                to="accounts/manage-accounts"
                 className="sidebar-link ps-5"
                 data-label="Staff/Admins"
                 aria-label="Staff/Admins"
               >
                 <FaCogs className="me-2 icon" />
-                <span>Staffs/Admins</span>
+                <span>Manage Admins</span>
               </Nav.Link>
             )}
 

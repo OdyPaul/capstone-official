@@ -7,8 +7,9 @@ import { useNavigate } from "react-router-dom";
 import { logout, reset } from "../../features/auth/authSlice";
 import { persistor } from "../../app/store";
 import "./css/header.css";
-
+import useAuthHydrator from "../../hooks/useAuthHydrator";
 const Header = () => {
+  useAuthHydrator(); 
   const { user } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();

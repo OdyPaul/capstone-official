@@ -59,7 +59,7 @@ export default function AppRoutes() {
         <Route index element={<Dashboard />} />
 
         {/* Accounts */}
-        <Route path="accounts/staff-admin" element={<AccountsAdminStaff />} />
+        <Route path="accounts/manage-accounts" element={<AccountsAdminStaff />} />
         <Route path="accounts/audit-logs/:id" element={<AuditLogs />} />
         <Route path="accounts/audit-logs" element={<AuditLogs />} />
         <Route path="accounts/verify-users" element={<VerifyUsers />} />

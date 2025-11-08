@@ -1,4 +1,4 @@
-// src/features/accounts/accountsSlice.js
+// src/features/accounts/accountSlice.js
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import accountService from './accountService';
 
