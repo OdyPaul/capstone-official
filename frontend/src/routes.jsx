@@ -30,7 +30,7 @@ import DraftConfirmation from './pages/vc/sub/draftConfirmation';
 import Transactions from './pages/vc/sub/transactions';
 import PaymentConfirmation from './pages/vc/sub/confirmPayments';
 
-import KeyVaults from './pages/KeyVaults';
+import IssuerProfile from './pages/IssuerProfile';
 import Blockchain from './pages/Blockchain';
 import About from './pages/About';
 import IssuedVc from './pages/registry/issuedVc';
@@ -86,7 +86,7 @@ export default function AppRoutes() {
         <Route path="registry/anchored" element={<Anchored/>} />
 
 
-        <Route path="key-vaults" element={<KeyVaults />} />
+        <Route path="IssuerProfile" element={<IssuerProfile />} />
         <Route path="blockchain-explorer" element={<Blockchain />} />
         <Route path="about" element={<About />} />
       </Route>

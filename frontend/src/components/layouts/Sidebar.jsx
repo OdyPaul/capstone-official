@@ -290,13 +290,13 @@ function Sidebar() {
         {/* Key Vaults */}
         <Nav.Link
           as={NavLink}
-          to="/key-vaults"
+          to="/IssuerProfile"
           className="sidebar-link p-3"
           data-label="Key Vaults"
           aria-label="Key Vaults"
         >
           <FaKey className="me-3 icon" />
-          <span className="hide-on-collapse">Key Vaults</span>
+          <span className="hide-on-collapse">Issuer Profile</span>
         </Nav.Link>
 
         {/* Blockchain Explorer */}
