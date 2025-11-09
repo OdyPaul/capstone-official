@@ -8,6 +8,7 @@ import templateReducer from "../features/template/templateSlice"
 import issuanceReducer from '../features/issuance/issuanceSlice'
 import accountReducer from '../features/accounts/accountSlice'
 import requestsReducer from "../features/request/requestsSlice";
+import anchorReducer from "../features/anchor/anchorSlice"
 import {
   persistStore,
   persistReducer,
@@ -39,6 +40,7 @@ export const store = configureStore({
     issuance: issuanceReducer,  
     accounts: accountReducer,   
     requests:requestsReducer,
+    anchor: anchorReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

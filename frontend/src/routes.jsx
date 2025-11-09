@@ -35,7 +35,8 @@ import Blockchain from './pages/Blockchain';
 import About from './pages/About';
 import IssuedVc from './pages/registry/issuedVc';
 import Profile from './pages/accounts/Profile';
-
+import Anchor  from './pages/registry/anchor';
+import Anchored from './pages/registry/anchored'
 export default function AppRoutes() {
   return (
     <Routes>
@@ -81,6 +82,10 @@ export default function AppRoutes() {
 
         {/* Registry / Utilities */}
         <Route path="registry/issuedVc" element={<IssuedVc />} />
+        <Route path="registry/anchor" element={<Anchor/>} />
+        <Route path="registry/anchored" element={<Anchored/>} />
+
+
         <Route path="key-vaults" element={<KeyVaults />} />
         <Route path="blockchain-explorer" element={<Blockchain />} />
         <Route path="about" element={<About />} />

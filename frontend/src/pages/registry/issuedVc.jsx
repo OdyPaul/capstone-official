@@ -1,3 +1,4 @@
+// src/pages/IssuedVc.jsx
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -7,6 +8,7 @@ import {
   FaQrcode, FaSync, FaRegCopy, FaExternalLinkAlt, FaDownload, FaSearch, FaCog,
 } from "react-icons/fa";
 import QRCode from "qrcode";
+import { NavLink } from "react-router-dom"; // <-- added
 import {
   loadIssuedVCs,
   openClaimQrForVC,
@@ -76,6 +78,10 @@ export default function IssuedVc() {
       <div className="d-flex align-items-center justify-content-between mb-3">
         <h1 className="h4 mb-0">Issued Credentials</h1>
         <div className="d-flex gap-2">
+          {/* NEW: Anchor VC button */}
+          <Button as={NavLink} to="/registry/anchor" variant="success">
+            Anchor VC
+          </Button>
           <Button variant="outline-primary" onClick={apply}>
             <FaSync className="me-2" /> Refresh
           </Button>
@@ -180,7 +186,7 @@ export default function IssuedVc() {
                             variant={isClaimed ? "outline-secondary" : "outline-dark"}
                             disabled={isClaimed}
                             title={isClaimed ? "Already claimed" : "Show claim QR"}
-                            onClick={() => !isClaimed && dispatch(openClaimQrForVC({ credId: vc._id }))}
+                            onClick={() => !isClaimed && dispatch(openClaimQrForVC({ credId: vc._id })) }
                           >
                             <FaQrcode className="me-2" /> {isClaimed ? "QR disabled" : "QR"}
                           </Button>
