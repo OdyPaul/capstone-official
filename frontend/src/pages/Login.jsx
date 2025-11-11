@@ -78,7 +78,7 @@ export default function Login() {
           <div className="login-right">
             <header className="login-header">
               <div className="accent-bar" />
-              <h1>Login as an Admin User</h1>
+              <h1>Login Admin User</h1>
             </header>
 
             <form onSubmit={onSubmit} className="form">

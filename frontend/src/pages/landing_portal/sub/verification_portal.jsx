@@ -70,54 +70,102 @@ function Progress({ value }) {
   );
 }
 
+/* ============================== Explorer helpers ============================== */
+const EXPLORERS = {
+  80002: { label: "Polygon Amoy", tx: (h) => `https://amoy.polygonscan.com/tx/${h}` },
+  137:   { label: "Polygon",      tx: (h) => `https://polygonscan.com/tx/${h}` },
+};
+const txUrl = (chainId, hash) => EXPLORERS[Number(chainId)]?.tx(hash) || null;
+
+/* Safely normalize meta coming from various backend shapes */
+function normalizeMeta(res) {
+  const m = res?.meta || {};
+  const vcType = m.vc_type || res?.vc_type || m.type || res?.type || "VC";
+  const holder = m.holder_name || m.holder || res?.holder_name || res?.holder || null;
+
+  const anch0 = m.anchoring || res?.anchoring || {};
+  const anch = {
+    chain_id: anch0.chain_id ?? anch0.chainId ?? null,
+    tx_hash: anch0.tx_hash ?? anch0.txHash ?? null,
+    merkle_root: anch0.merkle_root ?? anch0.merkleRoot ?? null,
+  };
+
+  return { vcType, holder, anch };
+}
+
 /* ============================== Page ============================== */
 export default function VerificationPortal() {
-  // 🔧 Minimal fix: accept any route param name (sessionId / session / id / first param)
+  // Accept any route param name (sessionId / session / id / first param)
   const params = useParams();
   const sessionId = params.sessionId || params.session || params.id || Object.values(params)[0] || "";
 
   const location = useLocation();
   const qs = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
-  // Presence flags (no exposure of actual identifiers)
   const hasHintInLink = qs.has("hint");
-  const hasCidInLink = qs.has("credential_id"); // still supported for legacy links, but we won't show it
-
-  // 🔧 Minimal fix: having a sessionId is itself fast-path
+  const hasCidInLink = qs.has("credential_id");
   const hasFastPath = !!sessionId || hasHintInLink || hasCidInLink;
 
-  // Steps depend on "fast path" presence (hint/credential_id/sessionId)
-  const steps = hasFastPath
+  const stepsList = hasFastPath
     ? [{ label: "Fill up" }, { label: "Request permission" }, { label: "Result" }]
     : [{ label: "Fill up" }, { label: "Provide VC Barcode" }, { label: "Request permission" }, { label: "Result" }];
 
-  // numeric step (1-based, for the stepper)
   const [step, setStep] = useState(1);
 
-  // Step 1: form (local only; not saved yet)
-  const [form, setForm] = useState({
-    name: "",
-    org: "",
-    purpose: "Credential verification",
-  });
+  const [form, setForm] = useState({ name: "", org: "", purpose: "Credential verification" });
   const formReady = form.name.trim() && form.org.trim();
 
-  // Optional: step 2 (only when !hasFastPath): QR/link intake (we DO NOT show raw credential_id)
   const [pastedLink, setPastedLink] = useState("");
   const [qrError, setQrError] = useState("");
-  const [hasDetectedCid, setHasDetectedCid] = useState(false); // boolean only (no value shown/stored)
+  const [hasDetectedCid, setHasDetectedCid] = useState(false);
 
-  // Result/polling
-  
-  const [busy, setBusy] = useState(false);
+  /* ----- Phases & loaders ----- */
+  // Result phase: 'idle' (not on result step), 'waiting' (asking user), 'validating' (5s fake validation), 'done' (show verdict+meta)
+  const [resultPhase, setResultPhase] = useState("idle");
+  const [requesting, setRequesting] = useState(false); // only for the button
   const [progress, setProgress] = useState(0);
+  const [stageIndex, setStageIndex] = useState(0);
   const [result, setResult] = useState(null);
-  const [copied, setCopied] = useState(false);
-  const pollingRef = useRef(false);
 
-  // for holder deep link / QR (optional helper panel)
+  const pollingRef = useRef(false);
+  const tickerRef = useRef(null);
+  const validateTimerRef = useRef(null);
+
+  // Validation (fake) duration for Result step even if server is already done
+  const VALIDATE_DURATION_MS = 5000;
+  const STAGE_MESSAGES = [
+    "Validating VC (signature & digest)…",
+    "Checking Merkle proof…",
+    "Confirming anchoring on Polygon…",
+  ];
+  const STAGE_INTERVAL_MS = Math.max(1000, Math.floor(VALIDATE_DURATION_MS / STAGE_MESSAGES.length));
+
+  useEffect(() => {
+    return () => {
+      clearInterval(tickerRef.current);
+      clearTimeout(validateTimerRef.current);
+    };
+  }, []);
+
   const sessionDeepLink =
     (typeof window !== "undefined" ? window.location.origin : "") + `/verify/${sessionId}?from=mobile`;
+
+  function startValidationTicker() {
+    clearInterval(tickerRef.current);
+    setStageIndex(0);
+    setProgress(15);
+    tickerRef.current = setInterval(() => {
+      setStageIndex((i) => {
+        const next = Math.min(i + 1, STAGE_MESSAGES.length - 1);
+        const pct = Math.round(((next + 1) / STAGE_MESSAGES.length) * 95);
+        setProgress((p) => (p < pct ? pct : p));
+        return next;
+      });
+    }, STAGE_INTERVAL_MS);
+  }
+  function stopValidationTicker() {
+    clearInterval(tickerRef.current);
+  }
 
   async function postJSON(path, body) {
     const r = await fetch(`${API_BASE}/api${path}`, {
@@ -127,64 +175,64 @@ export default function VerificationPortal() {
     });
     if (!r.ok) {
       let msg = `HTTP ${r.status}`;
-      try {
-        msg = (await r.json()).message || msg;
-      } catch {}
+      try { msg = (await r.json()).message || msg; } catch {}
       throw new Error(msg);
     }
     return r.json();
   }
 
-  async function pollUntilResult({ timeoutMs = 120000 } = {}) {
+  // Polls until backend result is final.
+  // When final: switch from 'waiting' → 'validating' (5s forced) → 'done'
+  async function pollUntilResult({ pollMs = 1200, timeoutMs = 120000 } = {}) {
     pollingRef.current = true;
-    setProgress(10);
-
-    // soft animation while polling
-    (async () => {
-      for (const m of [25, 42, 66, 82, 93]) {
-        await sleep(450);
-        if (!pollingRef.current) return;
-        setProgress((p) => (p < m ? m : p));
-      }
-    })();
-
     const start = Date.now();
+
     while (pollingRef.current) {
       const r = await fetch(`${API_BASE}/api/verification/session/${sessionId}`, { cache: "no-store" });
-      const data = await r.json();
-      const reason = data?.result?.reason;
+      const data = await r.json().catch(() => ({}));
+      const res = data?.result;
+      const reason = res?.reason;
+
       if (reason && reason !== "pending") {
-        setResult(data.result);
-        setProgress(100);
+        // Got final result → enter 5s validation animation
+        setResult(res || { valid: false, reason: "unknown" });
+        setResultPhase("validating");
+        startValidationTicker();
+        clearTimeout(validateTimerRef.current);
+        validateTimerRef.current = setTimeout(() => {
+          stopValidationTicker();
+          setProgress(100);
+          setResultPhase("done");
+        }, VALIDATE_DURATION_MS);
         pollingRef.current = false;
-        setStep(hasFastPath ? 3 : 4);
         return;
       }
+
       if (Date.now() - start > timeoutMs) {
+        // Timeout also goes through validation animation for consistency
         setResult({ valid: false, reason: "timeout_waiting_for_holder" });
-        setStep(hasFastPath ? 3 : 4);
+        setResultPhase("validating");
+        startValidationTicker();
+        clearTimeout(validateTimerRef.current);
+        validateTimerRef.current = setTimeout(() => {
+          stopValidationTicker();
+          setProgress(100);
+          setResultPhase("done");
+        }, VALIDATE_DURATION_MS);
         pollingRef.current = false;
         return;
       }
-      await sleep(800);
+
+      await sleep(pollMs);
     }
   }
 
-  // ---- Step 2 helpers (only used if !hasFastPath) ----
+  /* ---------- step 2 helpers (no fast path) ---------- */
   async function decodeQrFileClient(file) {
     setQrError("");
-    if (!file) {
-      setQrError("Please choose a QR image first.");
-      return;
-    }
-    if (!/image\/(png|jpe?g|webp)/i.test(file.type)) {
-      setQrError("Unsupported file type. Use PNG, JPG or WEBP.");
-      return;
-    }
-    if (file.size > 1_500_000) {
-      setQrError("Image is too large. Max 1.5 MB.");
-      return;
-    }
+    if (!file) { setQrError("Please choose a QR image first."); return; }
+    if (!/image\/(png|jpe?g|webp)/i.test(file.type)) { setQrError("Unsupported file type. Use PNG, JPG or WEBP."); return; }
+    if (file.size > 1_500_000) { setQrError("Image is too large. Max 1.5 MB."); return; }
 
     try {
       const { BrowserQRCodeReader } = await import("@zxing/browser");
@@ -195,60 +243,49 @@ export default function VerificationPortal() {
         const text = res?.getText?.() || "";
         if (!text) throw new Error("QR not recognized");
 
-        // We only care that a valid credential link/QR exists — do not show/store its id.
         let detected = false;
-
-        // JSON containing credential_id
-        try {
-          const o = JSON.parse(text);
-          if (o && o.credential_id) detected = true;
-        } catch {
-          // URL with ?credential_id=
-          try {
-            const u = new URL(text);
-            if (u.searchParams.get("credential_id")) detected = true;
-          } catch {}
+        try { const o = JSON.parse(text); if (o && o.credential_id) detected = true; }
+        catch {
+          try { const u = new URL(text); if (u.searchParams.get("credential_id")) detected = true; } catch {}
         }
-
         if (!detected) throw new Error("QR missing credential info");
         setHasDetectedCid(true);
       } finally {
         URL.revokeObjectURL(url);
         reader.reset();
       }
-    } catch (e) {
-      setQrError(e?.message || "Failed to decode QR");
-    }
+    } catch (e) { setQrError(e?.message || "Failed to decode QR"); }
   }
 
   function tryExtractCidFromLink(link) {
     setPastedLink(link);
-    try {
-      const u = new URL(link);
-      // Only check presence; do not read or display the value.
-      if (u.searchParams.get("credential_id")) setHasDetectedCid(true);
-    } catch {
-      /* ignore non-URL */
-    }
+    try { const u = new URL(link); if (u.searchParams.get("credential_id")) setHasDetectedCid(true); } catch {}
   }
 
-  // ---- Step "Request permission": call /begin only (never /present here) ----
+  /* ---------- separated loading: request vs result ---------- */
   async function requestPermission() {
-    if (!formReady) return;
-    setBusy(true);
+    if (!formReady || requesting) return;
+
     try {
+      setRequesting(true);
       await postJSON(`/verification/session/${sessionId}/begin`, {
         org: form.org.trim(),
         contact: form.name.trim(),
         purpose: form.purpose.trim() || "Credential verification",
       });
-      setBusy(false);
-      // Holder's phone will present after they approve; we just wait.
-      pollUntilResult();
     } catch (err) {
-      setBusy(false);
+      setRequesting(false);
       alert(err.message || "Failed to request permission");
+      return;
     }
+
+    // Move to Result step: Phase = 'waiting' (only “Requesting VC from user…”)
+    setRequesting(false);
+    setResult(null);
+    setProgress(10);
+    setResultPhase("waiting");
+    setStep(hasFastPath ? 3 : 4);
+    pollUntilResult();
   }
 
   return (
@@ -272,7 +309,7 @@ export default function VerificationPortal() {
       {/* Stepper on dark header */}
       <div className="bg-success text-white">
         <div className="container py-4">
-          <Stepper step={step} steps={steps} onDark />
+          <Stepper step={step} steps={stepsList} onDark />
         </div>
       </div>
 
@@ -288,61 +325,37 @@ export default function VerificationPortal() {
 
                 <form
                   className="row g-3 align-items-center"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!formReady) return;
-                    // Proceed to next step; if fast path, that is "Request permission".
-                    setStep(2);
-                  }}
+                  onSubmit={(e) => { e.preventDefault(); if (formReady) setStep(2); }}
                 >
-                  <div className="col-md-3">
-                    <label className="col-form-label">Your Name</label>
-                  </div>
+                  <div className="col-md-3"><label className="col-form-label">Your Name</label></div>
                   <div className="col-md-9">
-                    <input
-                      className="form-control"
-                      value={form.name}
+                    <input className="form-control" value={form.name}
                       onChange={(e) => setForm({ ...form, name: e.target.value })}
-                      placeholder="e.g., Alex Rivera"
-                      required
-                    />
+                      placeholder="e.g., Alex Rivera" required />
                   </div>
 
-                  <div className="col-md-3">
-                    <label className="col-form-label">Organization</label>
-                  </div>
+                  <div className="col-md-3"><label className="col-form-label">Organization</label></div>
                   <div className="col-md-9">
-                    <input
-                      className="form-control"
-                      value={form.org}
+                    <input className="form-control" value={form.org}
                       onChange={(e) => setForm({ ...form, org: e.target.value })}
-                      placeholder="e.g., Greenleaf Inc."
-                      required
-                    />
+                      placeholder="e.g., Greenleaf Inc." required />
                   </div>
 
-                  <div className="col-md-3">
-                    <label className="col-form-label">Purpose</label>
-                  </div>
+                  <div className="col-md-3"><label className="col-form-label">Purpose</label></div>
                   <div className="col-md-9">
-                    <input
-                      className="form-control"
-                      value={form.purpose}
+                    <input className="form-control" value={form.purpose}
                       onChange={(e) => setForm({ ...form, purpose: e.target.value })}
-                      placeholder="e.g., Hiring, Enrollment, Compliance"
-                    />
+                      placeholder="e.g., Hiring, Enrollment, Compliance" />
                   </div>
 
                   <div className="col-12 pt-2">
-                    <button type="submit" disabled={!formReady} className="btn btn-success fw-semibold">
-                      Next
-                    </button>
+                    <button type="submit" disabled={!formReady} className="btn btn-success fw-semibold">Next</button>
                   </div>
                 </form>
               </>
             )}
 
-            {/* Step 2: Either "Provide VC Barcode" (no fast path) OR "Request permission" (fast path) */}
+            {/* Step 2 (no fast path): Provide VC Barcode */}
             {!hasFastPath && step === 2 && (
               <>
                 <h2 className="h3 fw-bold text-dark">Provide the VC barcode</h2>
@@ -352,39 +365,23 @@ export default function VerificationPortal() {
                   <div className="col-lg-7">
                     <div className="border rounded-3 p-3 h-100">
                       <div className="d-flex align-items-center gap-2 mb-2">
-                        <span className="badge text-bg-secondary">Option A</span>
-                        <strong>Paste link</strong>
+                        <span className="badge text-bg-secondary">Option A</span><strong>Paste link</strong>
                       </div>
-                      <input
-                        className="form-control"
-                        placeholder="Paste link with ?credential_id=..."
-                        value={pastedLink}
-                        onChange={(e) => tryExtractCidFromLink(e.target.value)}
-                      />
+                      <input className="form-control" placeholder="Paste link with ?credential_id=..."
+                        value={pastedLink} onChange={(e) => tryExtractCidFromLink(e.target.value)} />
                       <div className="form-text">We’ll only check that it contains a credential (we won’t display it).</div>
 
                       <hr />
 
                       <div className="d-flex align-items-center gap-2 mb-2">
-                        <span className="badge text-bg-secondary">Option B</span>
-                        <strong>Upload QR image</strong>
+                        <span className="badge text-bg-secondary">Option B</span><strong>Upload QR image</strong>
                       </div>
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        className="form-control"
-                        onChange={(e) => {
-                          setQrError("");
-                          const f = e.target.files?.[0] || null;
-                          if (f) decodeQrFileClient(f);
-                        }}
-                      />
+                      <input type="file" accept="image/png,image/jpeg,image/webp" className="form-control"
+                        onChange={(e) => { setQrError(""); const f = e.target.files?.[0] || null; if (f) decodeQrFileClient(f); }} />
                       <div className="form-text">PNG, JPG, WEBP (max 1.5&nbsp;MB)</div>
 
                       {qrError && (
-                        <div className="alert alert-warning py-2 mt-2 mb-0">
-                          <small>{qrError}</small>
-                        </div>
+                        <div className="alert alert-warning py-2 mt-2 mb-0"><small>{qrError}</small></div>
                       )}
 
                       <div className="mt-3 p-2 rounded bg-light border">
@@ -393,14 +390,8 @@ export default function VerificationPortal() {
                       </div>
 
                       <div className="mt-3 d-flex gap-2">
-                        <button className="btn btn-outline-secondary" onClick={() => setStep(1)}>
-                          Back
-                        </button>
-                        <button
-                          className="btn btn-success fw-semibold"
-                          disabled={!hasDetectedCid}
-                          onClick={() => setStep(3)}
-                        >
+                        <button className="btn btn-outline-secondary" onClick={() => setStep(1)}>Back</button>
+                        <button className="btn btn-success fw-semibold" disabled={!hasDetectedCid} onClick={() => setStep(3)}>
                           Continue
                         </button>
                       </div>
@@ -411,38 +402,20 @@ export default function VerificationPortal() {
                   <div className="col-lg-5">
                     <div className="border rounded-3 p-3 h-100">
                       <div className="d-flex align-items-center gap-2 mb-2">
-                        <span className="badge text-bg-success">For holder</span>
-                        <strong>Scan this session on phone</strong>
+                        <span className="badge text-bg-success">For holder</span><strong>Scan this session on phone</strong>
                       </div>
                       <div className="d-flex align-items-center justify-content-center bg-white rounded-3 p-2">
                         <img
                           src={`${API_BASE}/api/verification/session/${sessionId}/qr.png?size=220`}
-                          alt="Session QR"
-                          width={220}
-                          height={220}
-                          className="img-fluid"
+                          alt="Session QR" width={220} height={220} className="img-fluid"
                         />
                       </div>
                       <div className="form-text mt-3">Or share this link:</div>
                       <div className="input-group">
-                        <input
-                          className="form-control"
-                          readOnly
-                          value={sessionDeepLink}
-                          onFocus={(e) => e.target.select()}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-outline-success"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(sessionDeepLink);
-                              setCopied(true);
-                              setTimeout(() => setCopied(false), 1400);
-                            } catch {}
-                          }}
-                        >
-                          {copied ? "Copied" : "Copy"}
+                        <input className="form-control" readOnly value={sessionDeepLink} onFocus={(e) => e.target.select()} />
+                        <button type="button" className="btn btn-outline-success"
+                          onClick={async () => { try { await navigator.clipboard.writeText(sessionDeepLink); } catch {} }}>
+                          Copy
                         </button>
                       </div>
                     </div>
@@ -451,72 +424,120 @@ export default function VerificationPortal() {
               </>
             )}
 
-            {/* Fast-path (hint or legacy credential_id or sessionId): directly request permission */}
-            {hasFastPath && step === 2 && (
+            {/* Step 3 (no fast path) OR Step 2 (fast path): Request permission */}
+            {(hasFastPath ? step === 2 : step === 3) && (
               <>
                 <h2 className="h3 fw-bold text-dark">Request permission</h2>
                 <p className="text-muted">We’ll ask the holder to approve sending their credential.</p>
 
                 <div className="border rounded-3 p-3">
                   <div className="row g-2">
-                    <div className="col-sm-6">
-                      <div className="small text-muted">Your Name</div>
-                      <div className="fw-semibold">{form.name}</div>
-                    </div>
-                    <div className="col-sm-6">
-                      <div className="small text-muted">Organization</div>
-                      <div className="fw-semibold">{form.org}</div>
-                    </div>
-                    <div className="col-sm-6">
-                      <div className="small text-muted mt-2">Purpose</div>
-                      <div className="fw-semibold">{form.purpose || "Credential verification"}</div>
-                    </div>
+                    <div className="col-sm-6"><div className="small text-muted">Your Name</div><div className="fw-semibold">{form.name}</div></div>
+                    <div className="col-sm-6"><div className="small text-muted">Organization</div><div className="fw-semibold">{form.org}</div></div>
+                    <div className="col-sm-6"><div className="small text-muted mt-2">Purpose</div><div className="fw-semibold">{form.purpose || "Credential verification"}</div></div>
                   </div>
 
                   <div className="mt-3 d-flex gap-2">
-                    <button className="btn btn-outline-secondary" onClick={() => setStep(1)}>
-                      Back
-                    </button>
-                    <button
-                      className="btn btn-success fw-semibold"
-                      disabled={busy || !formReady}
-                      onClick={requestPermission}
-                    >
-                      {busy ? "Requesting…" : "Request permission"}
+                    <button className="btn btn-outline-secondary" onClick={() => setStep(hasFastPath ? 1 : 2)}>Back</button>
+                    <button className="btn btn-success fw-semibold" disabled={!formReady || requesting} onClick={requestPermission}>
+                      {requesting ? "Requesting…" : "Request permission"}
                     </button>
                   </div>
-                </div>
-
-                <div className="mt-4">
-                  <div className="d-flex align-items-center gap-2 mb-2">
-                    <div className="spinner-border spinner-border-sm text-success" role="status" />
-                    <span className="text-dark">Waiting for holder to approve…</span>
-                  </div>
-                  <Progress value={progress} />
                 </div>
               </>
             )}
 
-            {/* Result (step 3 in 3-step flow; step 4 in 4-step flow) */}
+            {/* Result */}
             {(hasFastPath ? step === 3 : step === 4) && (
               <>
                 <h2 className="h3 fw-bold text-dark">Result</h2>
-                {result?.valid ? (
-                  <div className="alert alert-success mt-3 mb-0">
-                    <div className="fw-semibold">Credential is valid.</div>
-                    <div className="small">
-                      {result.reason === "not_anchored"
-                        ? "Note: Valid, but not anchored yet."
-                        : "All checks passed."}
+
+                {resultPhase === "waiting" && (
+                  <div className="mt-3">
+                    <div className="d-flex align-items-center gap-2 mb-2">
+                      <div className="spinner-border spinner-border-sm text-success" role="status" />
+                      <span className="text-dark">Requesting VC from user…</span>
                     </div>
+                    <Progress value={progress} />
+                    <div className="small text-muted mt-2">Waiting for the holder to approve the request.</div>
                   </div>
-                ) : (
-                  <div className="alert alert-danger mt-3 mb-0">
-                    <div className="fw-semibold">Verification failed.</div>
-                    <div className="small">
-                      Reason: <code>{result?.reason || "unknown_error"}</code>
+                )}
+
+                {resultPhase === "validating" && (
+                  <div className="mt-3">
+                    <div className="d-flex align-items-center gap-2 mb-2">
+                      <div className="spinner-border spinner-border-sm text-success" role="status" />
+                      <span className="text-dark">{STAGE_MESSAGES[stageIndex]}</span>
                     </div>
+                    <Progress value={progress} />
+                    <div className="small text-muted mt-2">Verifying signature, Merkle proof, and anchoring…</div>
                   </div>
+                )}
+
+                {resultPhase === "done" && (
+                  <>
+                    {result?.valid ? (
+                      <>
+                        <div className="alert alert-success mt-3">
+                          <div className="fw-semibold mb-1">Credential is valid.</div>
+                          <div className="small">
+                            {result.reason === "not_anchored" ? "Note: Valid, but not anchored yet." : "All checks passed."}
+                          </div>
+                        </div>
+
+                        {(() => {
+                          const meta = normalizeMeta(result);
+                          const chainId = meta.anch.chain_id;
+                          const chainLabel = EXPLORERS[Number(chainId)]?.label || (chainId ?? "—");
+                          const tx = meta.anch.tx_hash;
+                          const root = meta.anch.merkle_root;
+
+                          return (
+                            <div className="mt-3 row g-3">
+                              <div className="col-md-4">
+                                <div className="small text-muted">VC Type</div>
+                                <div className="fw-semibold">{meta.vcType || "—"}</div>
+                              </div>
+                              <div className="col-md-4">
+                                <div className="small text-muted">Holder</div>
+                                <div className="fw-semibold">{meta.holder || "—"}</div>
+                              </div>
+                              <div className="col-md-4">
+                                <div className="small text-muted">Anchor Chain</div>
+                                <div className="fw-semibold">{chainLabel}</div>
+                              </div>
+
+                              <div className="col-md-12">
+                                <div className="small text-muted">Merkle Root</div>
+                                <code className="fw-semibold">{root || "—"}</code>
+                              </div>
+
+                              <div className="col-md-12">
+                                <div className="small text-muted">Transaction</div>
+                                {tx ? (
+                                  <a
+                                    href={txUrl(chainId, tx) || "#"}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="fw-semibold text-decoration-underline"
+                                  >
+                                    {tx}
+                                  </a>
+                                ) : (
+                                  <div className="fw-semibold">—</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </>
+                    ) : (
+                      <div className="alert alert-danger mt-3 mb-0">
+                        <div className="fw-semibold">Verification failed.</div>
+                        <div className="small">Reason: <code>{result?.reason || "unknown_error"}</code></div>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
