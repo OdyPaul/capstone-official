@@ -545,7 +545,7 @@ export default function VerificationPortal() {
         </div>
       </section>
 
-      {/* Tiny CSS */}
+      {/* Tiny CSS /*/}
       <style>{`
         .stepper .circle { width: 36px; height: 36px; font-size: .9rem; }
         .shadow-inner { box-shadow: inset 0 1px 2px rgba(0,0,0,.12); }
