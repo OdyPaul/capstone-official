@@ -19,7 +19,7 @@ import { NavLink, useSearchParams } from "react-router-dom";
 import { FaSearch, FaCog, FaArrowLeft, FaEye } from "react-icons/fa";
 import { API_URL } from "../../../../config";
 
-import { getPassingStudents } from "../../../features/student/studentSlice";
+import { getPassingStudents, getStudentById } from "../../../features/student/studentSlice";
 import { createDrafts as createDraftsThunk } from "../../../features/draft_vc/vcSlice";
 
 /* ----------------------------- helpers ----------------------------- */
@@ -331,6 +331,8 @@ export default function CreateDrafts() {
     isError: studentsError,
     message: studentsMessage,
     allPrograms,
+    isLoadingDetail,
+    student: studentDetail,
   } = useSelector((s) => s.student);
 
   const { isLoadingCreate } = useSelector((s) => s.vc || {});
@@ -367,7 +369,7 @@ export default function CreateDrafts() {
   const [expirationDate, setExpirationDate] = useState("");
   const [showExpSettings, setShowExpSettings] = useState(false);
 
-  // Modals (flow)
+  // Flow modals
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmItems, setConfirmItems] = useState([]); // {studentId, name}[]
   const [showSingleSuccess, setShowSingleSuccess] = useState(false);
@@ -381,6 +383,10 @@ export default function CreateDrafts() {
   // TX Modal
   const [showTx, setShowTx] = useState(false);
   const [txNoToShow, setTxNoToShow] = useState("");
+
+  // View modal (for student details)
+  const [showView, setShowView] = useState(false);
+  const [selectedViewId, setSelectedViewId] = useState(null);
 
   /* ---------------------- derived & persistence ---------------------- */
   const currentYear = new Date().getFullYear();
@@ -807,7 +813,23 @@ export default function CreateDrafts() {
 
   const vcTypeLabel = vcType === "tor" ? "TOR" : "Diploma";
 
+  // View actions
+  const openView = (id) => {
+    setSelectedViewId(id);
+    setShowView(true);
+    dispatch(getStudentById(id));
+  };
+  const closeView = () => {
+    setShowView(false);
+    setSelectedViewId(null);
+  };
+
+  // Query mode: when searching, show *only* view action (no selection UI)
+  const queryMode = q.trim().length > 0;
+
   /* ---------------------------------- UI ---------------------------------- */
+  const baseColCount = queryMode ? 6 : 8; // for colSpan in loaders/empties
+
   return (
     <section className="container py-4">
       {/* header */}
@@ -888,26 +910,28 @@ export default function CreateDrafts() {
               ) : null}
               <Badge bg="secondary">Selected: {selectedRows.length}</Badge>
 
-              <div className="ms-auto d-flex gap-2">
-                <Button variant="outline-dark" size="sm" type="button" onClick={selectAllOnPage}>
-                  Toggle All (page)
-                </Button>
-                <Button
-                  variant="outline-danger"
-                  size="sm"
-                  type="button"
-                  onClick={clearSelection}
-                  disabled={selectedRows.length === 0}
-                >
-                  Clear Selected
-                </Button>
-              </div>
+              {!queryMode && (
+                <div className="ms-auto d-flex gap-2">
+                  <Button variant="outline-dark" size="sm" type="button" onClick={selectAllOnPage}>
+                    Toggle All (page)
+                  </Button>
+                  <Button
+                    variant="outline-danger"
+                    size="sm"
+                    type="button"
+                    onClick={clearSelection}
+                    disabled={selectedRows.length === 0}
+                  >
+                    Clear Selected
+                  </Button>
+                </div>
+              )}
             </div>
           </Form>
         </Card.Body>
       </Card>
 
-      {/* STUDENTS TABLE (filtered by APPLIED Grad ≥ year) */}
+      {/* STUDENTS TABLE */}
       <Card className="mb-3">
         <Card.Body>
           {studentsError && studentsMessage ? (
@@ -920,62 +944,92 @@ export default function CreateDrafts() {
             <Table bordered hover size="sm" className="align-middle mb-0">
               <thead className="table-light">
                 <tr>
-                  <th style={{ width: 40 }} />
-                  <th>#</th>
+                  {!queryMode && <th style={{ width: 40 }} />}
+                  {!queryMode && <th>#</th>}
+                  <th>Profile</th>
+                  <th>Student No.</th>
                   <th>Full Name</th>
                   <th>Program</th>
-                  <th>Address</th>
-                  <th>Place of Birth</th>
-                  <th>Date Admission</th>
                   <th>Date Graduated</th>
+                  <th style={{ width: 140 }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {loadingStudents ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-5">
+                    <td colSpan={baseColCount} className="text-center py-5">
                       <Spinner animation="border" className="me-2" />
                       Loading students…
                     </td>
                   </tr>
                 ) : visibleStudents.length > 0 ? (
                   visibleStudents.map((stu, idx) => {
-                    const isChecked = selectedRows.includes(stu._id);
-                    const dateAdmission = toDateOnly(stu.dateAdmission);
+                    const isChecked = !queryMode && selectedRows.includes(stu._id);
                     const dateGraduated = toDateOnly(stu.dateGraduated);
+
                     return (
                       <tr
                         key={stu._id}
                         onClick={(e) => {
+                          if (queryMode) return;
                           if (e.target.closest("button, a, input, label")) return;
                           toggleRow(stu._id);
                         }}
-                        className={isChecked ? "table-success" : ""}
-                        style={{ cursor: "pointer" }}
+                        className={!queryMode && isChecked ? "table-success" : ""}
+                        style={{ cursor: queryMode ? "default" : "pointer" }}
                       >
+                        {!queryMode && (
+                          <td>
+                            <Form.Check
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                toggleRow(stu._id);
+                              }}
+                            />
+                          </td>
+                        )}
+                        {!queryMode && <td>{indexOfFirst + idx + 1}</td>}
+
                         <td>
-                          <Form.Check
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              toggleRow(stu._id);
-                            }}
-                          />
+                          {stu.photoUrl ? (
+                            <img
+                              src={stu.photoUrl}
+                              alt=""
+                              style={{
+                                width: 42,
+                                height: 42,
+                                objectFit: "cover",
+                                borderRadius: 6,
+                              }}
+                            />
+                          ) : (
+                            <div className="text-muted small">—</div>
+                          )}
                         </td>
-                        <td>{indexOfFirst + idx + 1}</td>
+                        <td>{stu.studentNumber || "—"}</td>
                         <td>{stu.fullName || "—"}</td>
                         <td>{stu.program || "—"}</td>
-                        <td>{stu.address || "—"}</td>
-                        <td>{stu.placeOfBirth || "—"}</td>
-                        <td>{dateAdmission}</td>
                         <td>{dateGraduated}</td>
+                        <td>
+                          <div className="d-flex align-items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline-secondary"
+                              title="View"
+                              onClick={() => openView(stu._id)}
+                            >
+                              <FaEye />
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })
                 ) : (
                   <tr>
-                    <td colSpan={8} className="text-center py-4">
+                    <td colSpan={baseColCount} className="text-center py-4">
                       No students found.
                     </td>
                   </tr>
@@ -1171,7 +1225,7 @@ export default function CreateDrafts() {
               </Form.Text>
             </div>
 
-            {/* Graduation Year (≥) — presets (last 5 yrs incl. current) + "Type a year…" */}
+            {/* Graduation Year (≥) */}
             <div>
               <Form.Label>Graduation Year (≥)</Form.Label>
               <Form.Select
@@ -1272,6 +1326,127 @@ export default function CreateDrafts() {
           <Button variant="primary" type="button" onClick={() => setShowExpSettings(false)}>
             Done
           </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* View Student Modal (full details) */}
+      <Modal show={showView} onHide={closeView} centered size="lg">
+        <Modal.Header closeButton><Modal.Title>View Student</Modal.Title></Modal.Header>
+        <Modal.Body>
+          {isLoadingDetail ? (
+            <div className="text-center py-4"><Spinner animation="border" /></div>
+          ) : !studentDetail ? (
+            <div className="text-muted">No data.</div>
+          ) : (
+            <Row>
+              <Col md={8}>
+                <Row className="mb-3">
+                  <Col md={8}>
+                    <Form.Label>Full Name</Form.Label>
+                    <Form.Control value={studentDetail.fullName || ""} disabled readOnly />
+                  </Col>
+                  <Col md={4}>
+                    <Form.Label>Student No.</Form.Label>
+                    <Form.Control value={studentDetail.studentNumber || ""} disabled readOnly />
+                  </Col>
+                </Row>
+
+                <Row className="mb-3">
+                  <Col md={6}>
+                    <Form.Label>Program</Form.Label>
+                    <Form.Control value={studentDetail.program || ""} disabled readOnly />
+                  </Col>
+                  <Col md={6}>
+                    <Form.Label>Major</Form.Label>
+                    <Form.Control value={studentDetail.major || ""} disabled readOnly />
+                  </Col>
+                </Row>
+
+                <Row className="mb-3">
+                  <Col md={6}>
+                    <Form.Label>Curriculum</Form.Label>
+                    <Form.Control
+                      value={
+                        typeof studentDetail.curriculum === "string"
+                          ? studentDetail.curriculum
+                          : studentDetail.curriculum?._id || ""
+                      }
+                      disabled
+                      readOnly
+                    />
+                  </Col>
+                  <Col md={6}>
+                    <Form.Label>Gender</Form.Label>
+                    <Form.Control value={studentDetail.gender || ""} disabled readOnly />
+                  </Col>
+                </Row>
+
+                <Row className="mb-3">
+                  <Col md={12}>
+                    <Form.Label>Address</Form.Label>
+                    <Form.Control as="textarea" rows={2} value={studentDetail.address || ""} disabled readOnly />
+                  </Col>
+                </Row>
+
+                <Row className="mb-3">
+                  <Col md={6}>
+                    <Form.Label>Place of Birth</Form.Label>
+                    <Form.Control value={studentDetail.placeOfBirth || ""} disabled readOnly />
+                  </Col>
+                  <Col md={6}>
+                    <Form.Label>High School</Form.Label>
+                    <Form.Control value={studentDetail.highSchool || ""} disabled readOnly />
+                  </Col>
+                </Row>
+
+                <Row className="mb-3">
+                  <Col md={6}>
+                    <Form.Label>Date Admission</Form.Label>
+                    <Form.Control value={toDateOnly(studentDetail.dateAdmission)} disabled readOnly />
+                  </Col>
+                  <Col md={6}>
+                    <Form.Label>Date Graduated</Form.Label>
+                    <Form.Control value={toDateOnly(studentDetail.dateGraduated)} disabled readOnly />
+                  </Col>
+                </Row>
+
+                <Row className="mb-3">
+                  <Col md={6}>
+                    <Form.Label>GWA</Form.Label>
+                    <Form.Control
+                      value={
+                        studentDetail.gwa !== undefined && studentDetail.gwa !== null
+                          ? studentDetail.gwa
+                          : ""
+                      }
+                      disabled readOnly
+                    />
+                  </Col>
+                  <Col md={6}>
+                    <Form.Label>Honor</Form.Label>
+                    <Form.Control value={studentDetail.honor || ""} disabled readOnly />
+                  </Col>
+                </Row>
+              </Col>
+
+              <Col md={4}>
+                <div className="border rounded d-flex flex-column align-items-center justify-content-center p-3" style={{ minHeight: 260 }}>
+                  {studentDetail.photoUrl ? (
+                    <img
+                      src={studentDetail.photoUrl}
+                      alt="Profile"
+                      style={{ width: 180, height: 180, objectFit: "cover", borderRadius: 8, border: "1px solid #eee" }}
+                    />
+                  ) : (
+                    <div className="text-muted">No profile photo</div>
+                  )}
+                </div>
+              </Col>
+            </Row>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={closeView}>Close</Button>
         </Modal.Footer>
       </Modal>
 

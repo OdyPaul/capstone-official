@@ -94,6 +94,9 @@ export default function Issue() {
                           dispatch(setSelected(Array.from(union)));
                         }
                       }}
+                      // Prevent header checkbox click from triggering row handlers (future-proof)
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
                     />
                   </th>
                   <th>Student name</th>
@@ -119,20 +122,40 @@ export default function Issue() {
                     const id = d._id;
                     const checked = selected.includes(id);
                     const student = (d && d.student) || {};
+
+                    // Row toggle handler (click / keyboard)
+                    const toggleRow = () => dispatch(toggleSelect(id));
+                    const onRowKeyDown = (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        toggleRow();
+                      }
+                    };
+
                     return (
-                      <tr key={p._id}>
+                      <tr
+                        key={p._id}
+                        className={checked ? "table-active" : undefined}
+                        style={{ cursor: "pointer" }}
+                        onClick={toggleRow}
+                        onKeyDown={onRowKeyDown}
+                        tabIndex={0}
+                        aria-selected={checked}
+                      >
                         <td>
                           <Form.Check
                             type="checkbox"
                             checked={checked}
                             onChange={() => dispatch(toggleSelect(id))}
+                            // Avoid double toggle when clicking the checkbox itself
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => e.stopPropagation()}
                           />
                         </td>
                         <td>
                           <div className="fw-semibold">
                             {student.fullName || "—"}
                           </div>
-                          {/* Optional extra context like the draft page */}
                           <div className="small text-muted">
                             {student.program || "—"}
                           </div>

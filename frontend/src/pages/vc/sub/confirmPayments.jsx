@@ -8,9 +8,39 @@ import {
 import {
   Button, Card, Table, Spinner, Row, Col, Form, InputGroup, Badge, Modal,
 } from "react-bootstrap";
-import { FaArrowLeft, FaSync, FaEye, FaMoneyCheckAlt } from "react-icons/fa";
+import { FaArrowLeft, FaSync, FaEye, FaMoneyCheckAlt, FaCheckCircle } from "react-icons/fa";
 
-// Modal to show a single TX number (with copy)
+/* ------------------------------- Modals ------------------------------- */
+
+// Success modal (green check, headline, message, full-width CTA)
+function SuccessModal({ show, onClose, title = "SUCCESS", message = "We are delighted to inform you that we received your payment." }) {
+  return (
+    <Modal show={show} onHide={onClose} centered>
+      <Modal.Header closeButton className="border-0" />
+      <Modal.Body className="text-center pt-0">
+        <div
+          className="d-inline-flex align-items-center justify-content-center rounded-circle bg-success mb-3"
+          style={{ width: 72, height: 72 }}
+        >
+          <FaCheckCircle size={40} className="text-white" />
+        </div>
+        <h5 className="text-success fw-bold mb-2">{title}</h5>
+        <div className="text-muted">{message}</div>
+      </Modal.Body>
+      <Modal.Footer className="border-0 p-0">
+        <Button
+          variant="success"
+          className="w-100 rounded-0 py-3"
+          onClick={onClose}
+        >
+          Continue
+        </Button>
+      </Modal.Footer>
+    </Modal>
+  );
+}
+
+// View a single TX number (with copy)
 function TxViewerModal({ show, onHide, txNo }) {
   const copy = async () => {
     try { await navigator.clipboard.writeText(txNo || ""); } catch {}
@@ -29,35 +59,31 @@ function TxViewerModal({ show, onHide, txNo }) {
   );
 }
 
-// Reuse a local MarkPaid modal (same UX as Issuance page)
-// Reuse a local MarkPaid modal (same UX as Issuance page)
-function MarkPaidModal({ show, onHide, defaultTxNo, onSubmit }) {
-  // Generate a server-friendly receipt number (no spaces)
+// Small input modal (collects TX + Receipt), then hands off to a confirm modal via onPreview(...)
+function MarkPaidModal({ show, onHide, defaultTxNo, defaultReceipt, onPreview }) {
   const buildReceipt = (tx) => {
     const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, "");
     const last4 = String(tx || "").split("-").pop().slice(-4).toUpperCase();
     const rand2 = Math.random().toString(36).slice(2, 4).toUpperCase();
-    return `RCPT-TEST-${ymd}-${last4}${rand2}`; // ✅ no spaces, only A-Z0-9-
+    return `RCPT-TEST-${ymd}-${last4}${rand2}`;
   };
 
   const [txNo, setTxNo] = useState(defaultTxNo || "");
-  const [receipt, setReceipt] = useState("");
-  const [saving, setSaving] = useState(false);
+  const [receipt, setReceipt] = useState(defaultReceipt || "");
   const [error, setError] = useState("");
 
   useEffect(() => {
     setTxNo(defaultTxNo || "");
     setError("");
-    setReceipt(buildReceipt(defaultTxNo || ""));
-  }, [defaultTxNo, show]);
+    setReceipt(defaultReceipt || buildReceipt(defaultTxNo || ""));
+  }, [defaultTxNo, defaultReceipt, show]);
 
-  // keep value compliant with backend regex: ^[A-Z0-9\-]{3,32}$
   const onReceiptChange = (e) => {
     const v = e.target.value
       .toUpperCase()
-      .replace(/[^A-Z0-9\-]/g, "-") // replace disallowed chars
-      .replace(/-+/g, "-")          // collapse runs of '-'
-      .slice(0, 32);                // enforce max length
+      .replace(/[^A-Z0-9\-]/g, "-")
+      .replace(/-+/g, "-")
+      .slice(0, 32);
     setReceipt(v);
   };
 
@@ -73,28 +99,12 @@ function MarkPaidModal({ show, onHide, defaultTxNo, onSubmit }) {
       return;
     }
 
-    setSaving(true);
-    try {
-      await onSubmit(cleanTx, {
-        method: "cash",
-        receipt_no: cleanRcpt,                         // already uppercase
-        receipt_date: new Date().toISOString().slice(0, 10),
-      });
-      onHide(true);
-    } catch (err) {
-      const msg =
-        (err?.response?.data?.message ||
-          err?.message ||
-          "Mark-paid failed") + "";
-
-      // If duplicate receipt, auto-suggest a new one so user can retry immediately
-      if (msg.toLowerCase().includes("receipt number already used")) {
-        setReceipt(buildReceipt(cleanTx));
-      }
-      setError(msg);
-    } finally {
-      setSaving(false);
-    }
+    onPreview(cleanTx, {
+      method: "cash",
+      receipt_no: cleanRcpt,
+      receipt_date: new Date().toISOString().slice(0, 10),
+    });
+    onHide(false);
   };
 
   return (
@@ -137,11 +147,8 @@ function MarkPaidModal({ show, onHide, defaultTxNo, onSubmit }) {
           <Button variant="outline-secondary" onClick={() => onHide(false)}>
             Cancel
           </Button>
-          <Button type="submit" variant="success" disabled={saving}>
-            {saving ? (
-              <Spinner size="sm" animation="border" className="me-2" />
-            ) : null}
-            Save Paid
+          <Button type="submit" variant="success">
+            Continue
           </Button>
         </Modal.Footer>
       </Form>
@@ -149,6 +156,71 @@ function MarkPaidModal({ show, onHide, defaultTxNo, onSubmit }) {
   );
 }
 
+// Final confirmation summary before dispatching markPaymentPaid
+function ConfirmMarkPaidModal({
+  show,
+  onHide,          // onHide(ok: boolean)
+  item,            // { txNo, payload, meta }
+  isSaving,
+  error,
+  onBack,          // go back to edit values
+}) {
+  const found = item?.meta?.found;
+  const summaryRows = [
+    ["Student", found?.draft?.student?.fullName || "—"],
+    ["Type", found?.draft?.type || "—"],
+    ["Purpose", found?.draft?.purpose || "—"],
+    ["Amount", found ? `${Number(found.amount).toFixed(2)} ${found.currency || "PHP"}` : "—"],
+    ["Current Status", found?.status || "—"],
+    ["TX No", item?.txNo || "—"],
+    ["Receipt No", item?.payload?.receipt_no || "—"],
+    ["Receipt Date", item?.payload?.receipt_date || "—"],
+    ["Method", (item?.payload?.method || "cash").toUpperCase()],
+  ];
+
+  return (
+    <Modal show={show} onHide={() => onHide(false)} centered>
+      <Modal.Header closeButton>
+        <Modal.Title>Confirm Mark as Paid</Modal.Title>
+      </Modal.Header>
+      <Modal.Body>
+        <div className="mb-2">Please confirm the payment details below.</div>
+        <div className="table-responsive">
+          <Table bordered size="sm" className="mb-0 align-middle">
+            <tbody>
+              {summaryRows.map(([k, v]) => (
+                <tr key={k}>
+                  <th style={{ width: 160 }}>{k}</th>
+                  <td>{v}</td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        </div>
+        {error ? <div className="text-danger mt-3">{String(error)}</div> : null}
+      </Modal.Body>
+      <Modal.Footer>
+        <Button variant="outline-secondary" onClick={onBack} disabled={isSaving}>
+          Back
+        </Button>
+        <Button variant="outline-secondary" onClick={() => onHide(false)} disabled={isSaving}>
+          Cancel
+        </Button>
+        <Button variant="success" onClick={() => onHide(true)} disabled={isSaving}>
+          {isSaving ? (
+            <>
+              <Spinner size="sm" animation="border" className="me-2" /> Saving…
+            </>
+          ) : (
+            "Confirm Paid"
+          )}
+        </Button>
+      </Modal.Footer>
+    </Modal>
+  );
+}
+
+/* --------------------------- Page Component --------------------------- */
 
 export default function PaymentConfirmation() {
   const dispatch = useDispatch();
@@ -157,8 +229,20 @@ export default function PaymentConfirmation() {
   const [q, setQ] = useState("");
   const [showTx, setShowTx] = useState(false);
   const [txNoToShow, setTxNoToShow] = useState("");
+
+  // Edit modal (collect tx + receipt)
   const [showPaidModal, setShowPaidModal] = useState(false);
   const [prefillTx, setPrefillTx] = useState("");
+  const [prefillReceipt, setPrefillReceipt] = useState("");
+
+  // Confirm modal
+  const [showConfirmPaid, setShowConfirmPaid] = useState(false);
+  const [confirmSaving, setConfirmSaving] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
+  const [pendingItem, setPendingItem] = useState(null); // { txNo, payload, meta: { found } }
+
+  // Success modal
+  const [showSuccess, setShowSuccess] = useState(false);
 
   useEffect(() => {
     dispatch(loadPendingPayments({}));
@@ -177,12 +261,54 @@ export default function PaymentConfirmation() {
       );
     });
   }, [pending, q]);
-  const suggestReceipt = (tx) => {
-  const ymd = new Date().toISOString().slice(0,10).replace(/-/g,'');
-  const last4 = String(tx || '').split('-').pop().slice(-4).toUpperCase();
-  const rand2 = Math.random().toString(36).slice(2,4).toUpperCase();
-  return `RCPT-${ymd}-${last4}${rand2}`;
-};
+
+  const previewPaid = (txNo, payload) => {
+    const found =
+      (pending || []).find(
+        (p) =>
+          String(p.tx_no).toLowerCase() === String(txNo).toLowerCase() ||
+          String(p?.draft?.payment_tx_no || "").toLowerCase() === String(txNo).toLowerCase()
+      ) || null;
+
+    setPendingItem({ txNo, payload, meta: { found } });
+    setConfirmError("");
+    setShowConfirmPaid(true);
+  };
+
+  const onConfirmSubmit = async (ok) => {
+    if (!ok) {
+      setShowConfirmPaid(false);
+      return;
+    }
+    if (!pendingItem) return;
+
+    setConfirmSaving(true);
+    setConfirmError("");
+    try {
+      await dispatch(
+        markPaymentPaid({ txNo: pendingItem.txNo, payload: pendingItem.payload })
+      ).unwrap();
+
+      setShowConfirmPaid(false);
+      dispatch(loadPendingPayments({}));
+      setShowSuccess(true); // ✅ show success modal
+    } catch (err) {
+      const msg =
+        (err?.response?.data?.message ||
+          err?.message ||
+          "Mark-paid failed") + "";
+      setConfirmError(msg);
+    } finally {
+      setConfirmSaving(false);
+    }
+  };
+
+  const backToEdit = () => {
+    setShowConfirmPaid(false);
+    setPrefillTx(pendingItem?.txNo || "");
+    setPrefillReceipt(pendingItem?.payload?.receipt_no || "");
+    setShowPaidModal(true);
+  };
 
   return (
     <section className="container py-4">
@@ -215,6 +341,7 @@ export default function PaymentConfirmation() {
                 variant="outline-success"
                 onClick={() => {
                   setPrefillTx("");
+                  setPrefillReceipt("");
                   setShowPaidModal(true);
                 }}
               >
@@ -279,6 +406,7 @@ export default function PaymentConfirmation() {
                             variant="outline-success"
                             onClick={() => {
                               setPrefillTx(p.tx_no);
+                              setPrefillReceipt(""); // will auto-generate in modal
                               setShowPaidModal(true);
                             }}
                           >
@@ -301,16 +429,36 @@ export default function PaymentConfirmation() {
         </Card.Body>
       </Card>
 
+      {/* TX viewer */}
       <TxViewerModal show={showTx} txNo={txNoToShow} onHide={() => setShowTx(false)} />
 
+      {/* Edit values first */}
       <MarkPaidModal
         show={showPaidModal}
         onHide={(ok) => {
           setShowPaidModal(false);
-          if (ok) dispatch(loadPendingPayments({}));
         }}
         defaultTxNo={prefillTx}
-        onSubmit={(txNo, payload) => dispatch(markPaymentPaid({ txNo, payload })).unwrap()}
+        defaultReceipt={prefillReceipt}
+        onPreview={previewPaid}
+      />
+
+      {/* Confirm summary */}
+      <ConfirmMarkPaidModal
+        show={showConfirmPaid}
+        onHide={onConfirmSubmit}
+        item={pendingItem}
+        isSaving={confirmSaving}
+        error={confirmError}
+        onBack={backToEdit}
+      />
+
+      {/* Success */}
+      <SuccessModal
+        show={showSuccess}
+        onClose={() => setShowSuccess(false)}
+        title="SUCCESS"
+        message="We are delighted to inform you that we received your payment."
       />
     </section>
   );
