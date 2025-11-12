@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { API_URL as CONFIG_API_URL } from "../../../../config";
 import { renderTorFromPayload, downloadTorPdf } from "../../../lib/torRenderer";
+import { renderDiplomaFromPayload, downloadDiplomaPdf } from "../../../lib/diplomaRenderer";
 
 /** Resolve API base (origin only; no trailing slash; no `/api`) */
 const stripBase = (u = "") => String(u).trim().replace(/\/+$/, "").replace(/\/api$/, "");
@@ -79,7 +80,7 @@ const EXPLORERS = {
 };
 const txUrl = (chainId, hash) => EXPLORERS[Number(chainId)]?.tx(hash) || null;
 
-/* Normalize meta */
+/* Normalize meta (for the header info box only) */
 function normalizeMeta(res) {
   const m = res?.meta || {};
   const vcType = m.vc_type || res?.vc_type || m.type || res?.type || "VC";
@@ -95,14 +96,44 @@ function normalizeMeta(res) {
   return { vcType, holder, anch, print_url: m.print_url || null };
 }
 
+/* ===== Kind detection: Diploma VC vs TOR ===== */
+function detectPrintableKind(meta, printable) {
+  const slug =
+    meta?.template?.slug ||
+    meta?.template_slug ||
+    meta?.templateSlug ||
+    meta?.template?.name ||
+    meta?.name ||
+    "";
+
+  const looksDiplomaBySlug = String(slug).toLowerCase().includes("diploma");
+
+  const hasSubjectsArray = Array.isArray(printable?.subjects) && printable.subjects.length > 0;
+  const hasSubjectsObject =
+    printable?.subjects && typeof printable.subjects === "object" && !Array.isArray(printable.subjects);
+
+  const hasProgram = !!printable?.program;
+  const hasFullName = !!printable?.fullName;
+
+  // Heuristics:
+  // - If template says diploma => diploma
+  // - Else if it has program+fullName but no subjects => diploma
+  // - Else if subjects exist => tor
+  if (looksDiplomaBySlug) return "diploma";
+  if (hasProgram && hasFullName && !hasSubjectsArray && !hasSubjectsObject) return "diploma";
+  if (hasSubjectsArray || hasSubjectsObject) return "tor";
+  // Fallback: TOR (old flow)
+  return "tor";
+}
+
 /* ============================== Page ============================== */
 export default function VerificationPortal() {
   // Accept any route param name (sessionId / session / id / first param)
   const params = useParams();
   const sessionId = params.sessionId || params.session || params.id || Object.values(params)[0] || "";
 
-  // (Kept, but we won't show any on-screen preview)
-  const torRootRef = useRef(null);
+  // No visible preview; we render off-screen when downloading
+  const hiddenRenderRef = useRef(null);
 
   const location = useLocation();
   const qs = useMemo(() => new URLSearchParams(location.search), [location.search]);
@@ -305,71 +336,87 @@ export default function VerificationPortal() {
     pollUntilResult();
   }
 
-  /* ---------- DEBUG: log printable when verification succeeds ---------- */
+  /* ---------- DEBUG: log meta + printable when verification succeeds ---------- */
   useEffect(() => {
     if (resultPhase !== "done" || !result?.valid) return;
-    const printable = result?.meta?.printable;
-
-    console.groupCollapsed("%c[TOR] printable payload", "color:#0b7;font-weight:bold");
-    console.log("printable:", printable);
-    const subs = printable?.subjects;
-    console.log("subjects typeof:", typeof subs, "isArray:", Array.isArray(subs));
-    if (Array.isArray(subs)) {
-      console.log("subjects.length:", subs.length, "sample[0]:", subs[0]);
-    } else if (subs && typeof subs === "object") {
-      const keys = Object.keys(subs);
-      console.log("subjects keys:", keys);
-      if (keys.length) {
-        const fk = keys[0];
-        const arr = Array.isArray(subs[fk]) ? subs[fk] : [];
-        console.log(`subjects['${fk}'] length:`, arr.length, "sample[0]:", arr[0]);
-      }
-    } else {
-      console.log("subjects is null/undefined or not recognized.");
-    }
+    const meta = result?.meta || {};
+    const printable = meta?.printable;
+    const tmpl = meta?.template || {};
+    console.groupCollapsed("%c[Verify] meta + printable", "color:#0b7;font-weight:bold");
+    console.log("meta:", meta);
+    console.log("template slug/name:", tmpl?.slug, tmpl?.name);
+    console.log("vc_type:", meta?.vc_type, "holder:", meta?.holder || meta?.holder_name);
+    console.log("printable keys:", printable ? Object.keys(printable) : null);
+    console.log("subjects:",
+      printable?.subjects && (Array.isArray(printable.subjects) ? `array(${printable.subjects.length})` : typeof printable.subjects)
+    );
+    console.log("program:", printable?.program, "fullName:", printable?.fullName);
+    console.log("detected kind:", detectPrintableKind(meta, printable));
     console.groupEnd();
   }, [resultPhase, result]);
 
-  /* ---------- Off-screen render + download ---------- */
-  async function renderAndDownloadTor(printable) {
-    // Create a hidden mount so html2canvas gets actual layout but nothing shows.
-    const hiddenMount = document.createElement("div");
-    Object.assign(hiddenMount.style, {
+  /* ---------- Off-screen renders ---------- */
+  function makeHiddenMount() {
+    const el = document.createElement("div");
+    Object.assign(el.style, {
       position: "fixed",
       left: "-10000px",
       top: "-10000px",
       width: "210mm",
-      height: "297mm",
+      minHeight: "297mm",
       pointerEvents: "none",
       opacity: "0",
       zIndex: "-1",
     });
-    document.body.appendChild(hiddenMount);
+    document.body.appendChild(el);
+    return el;
+  }
 
+  async function renderAndDownloadTor(printable) {
+    const mount = makeHiddenMount();
     try {
       await renderTorFromPayload({
-        mount: hiddenMount,
+        mount,
         payload: printable,
-        // IMPORTANT: files must live under /public/assets in Vite
         bg1: "/assets/tor-page-1.png",
         bg2: "/assets/tor-page-2.png",
         rowsPerFirst: 23,
         rowsPerNext: 31,
       });
-
-      const pageCount = hiddenMount.querySelectorAll(".page").length;
+      const pageCount = mount.querySelectorAll(".page").length;
       if (!pageCount) {
-        console.warn("[TOR] No pages were rendered — subjects may be empty or unmapped.");
         alert("No subjects found in the credential.");
         return;
       }
-
-      await downloadTorPdf(
-        hiddenMount,
-        `TOR_${printable?.studentNumber || "student"}.pdf`
-      );
+      await downloadTorPdf(mount, `TOR_${printable?.studentNumber || "student"}.pdf`);
     } finally {
-      hiddenMount.remove();
+      mount.remove();
+    }
+  }
+
+  async function renderAndDownloadDiploma(printable) {
+    const mount = makeHiddenMount();
+    try {
+      await renderDiplomaFromPayload({
+        mount,
+        payload: printable,
+        // Optional assets if you add them later:
+        // sealUrl: "/assets/seal.png",
+        // signatureUrl: "/assets/signature.png",
+      });
+      await downloadDiplomaPdf(mount, `Diploma_${(printable?.fullName || "graduate").replace(/\s+/g, "_")}.pdf`);
+    } finally {
+      mount.remove();
+    }
+  }
+
+  async function handleDownload(printable, meta) {
+    if (!printable) return;
+    const kind = detectPrintableKind(meta, printable);
+    if (kind === "diploma") {
+      await renderAndDownloadDiploma(printable);
+    } else {
+      await renderAndDownloadTor(printable);
     }
   }
 
@@ -653,6 +700,11 @@ export default function VerificationPortal() {
                           const root = meta.anch.merkle_root;
                           const printable = result?.meta?.printable;
 
+                          const label =
+                            detectPrintableKind(result?.meta, printable) === "diploma"
+                              ? "Download Diploma PDF"
+                              : "Download TOR PDF";
+
                           return (
                             <>
                               <div className="mt-3 row g-3">
@@ -695,10 +747,10 @@ export default function VerificationPortal() {
                               <div className="mt-4 d-flex gap-2">
                                 <button
                                   className={`btn fw-semibold ${printable ? "btn-success" : "btn-outline-secondary disabled"}`}
-                                  onClick={() => printable && renderAndDownloadTor(printable)}
-                                  title={printable ? "Download A4 PDF" : "Printable payload missing"}
+                                  onClick={() => printable && handleDownload(printable, result?.meta)}
+                                  title={printable ? "Generate and download PDF" : "Printable payload missing"}
                                 >
-                                  Download PDF
+                                  {label}
                                 </button>
                               </div>
                             </>
