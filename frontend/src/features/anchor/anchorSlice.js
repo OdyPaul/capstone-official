@@ -31,7 +31,9 @@ export const enqueueAnchorNow = createAsyncThunk(
       const token = thunkAPI.getState()?.auth?.user?.token;
       if (!token) throw new Error("Not authenticated");
       const res = await anchorService.requestNow(credId, token);
-      await thunkAPI.dispatch(loadAnchorQueue({ mode: "now", approved: "all" }));
+      await thunkAPI.dispatch(
+        loadAnchorQueue({ mode: "now", approved: "all" })
+      );
       return res;
     } catch (e) {
       return thunkAPI.rejectWithValue(msg(e));
@@ -46,8 +48,13 @@ export const approveQueued = createAsyncThunk(
     try {
       const token = thunkAPI.getState()?.auth?.user?.token;
       if (!token) throw new Error("Not authenticated");
-      const res = await anchorService.approveQueued({ credIds, approved_mode }, token);
-      await thunkAPI.dispatch(loadAnchorQueue({ mode: "all", approved: "all" }));
+      const res = await anchorService.approveQueued(
+        { credIds, approved_mode },
+        token
+      );
+      await thunkAPI.dispatch(
+        loadAnchorQueue({ mode: "all", approved: "all" })
+      );
       return res;
     } catch (e) {
       return thunkAPI.rejectWithValue(msg(e));
@@ -63,7 +70,9 @@ export const runSingleAnchor = createAsyncThunk(
       const token = thunkAPI.getState()?.auth?.user?.token;
       if (!token) throw new Error("Not authenticated");
       const res = await anchorService.runSingle(credId, token);
-      await thunkAPI.dispatch(loadAnchorQueue({ mode: "all", approved: "all" }));
+      await thunkAPI.dispatch(
+        loadAnchorQueue({ mode: "all", approved: "all" })
+      );
       return res;
     } catch (e) {
       return thunkAPI.rejectWithValue(msg(e));
@@ -79,7 +88,9 @@ export const mintBatch = createAsyncThunk(
       const token = thunkAPI.getState()?.auth?.user?.token;
       if (!token) throw new Error("Not authenticated");
       const res = await anchorService.mintBatch(token, { mode });
-      await thunkAPI.dispatch(loadAnchorQueue({ mode: "now", approved: "all" }));
+      await thunkAPI.dispatch(
+        loadAnchorQueue({ mode: "now", approved: "all" })
+      );
       return res;
     } catch (e) {
       return thunkAPI.rejectWithValue(msg(e));
@@ -94,7 +105,10 @@ export const loadRecentNonAnchor = createAsyncThunk(
     try {
       const token = thunkAPI.getState()?.auth?.user?.token;
       if (!token) throw new Error("Not authenticated");
-      return await anchorService.listRecentNonAnchorSigned({ days, extraFilters }, token);
+      return await anchorService.listRecentNonAnchorSigned(
+        { days, extraFilters },
+        token
+      );
     } catch (e) {
       return thunkAPI.rejectWithValue(msg(e));
     }
@@ -108,7 +122,41 @@ export const loadAnchorBatches = createAsyncThunk(
     try {
       const token = thunkAPI.getState()?.auth?.user?.token;
       if (!token) throw new Error("Not authenticated");
-      return await anchorService.listAnchorBatches({ limit, chain_id }, token);
+      return await anchorService.listAnchorBatches(
+        { limit, chain_id },
+        token
+      );
+    } catch (e) {
+      return thunkAPI.rejectWithValue(msg(e));
+    }
+  }
+);
+
+// ---------- NEW: simple candidates list (unanchored issued VCs) ----------
+export const loadAnchorCandidates = createAsyncThunk(
+  "anchor/loadCandidates",
+  async (filters, thunkAPI) => {
+    try {
+      const token = thunkAPI.getState()?.auth?.user?.token;
+      if (!token) throw new Error("Not authenticated");
+      return await anchorService.listCandidates(filters || {}, token);
+    } catch (e) {
+      return thunkAPI.rejectWithValue(msg(e));
+    }
+  }
+);
+
+// ---------- NEW: mint a selected set of IDs as one batch ----------
+export const mintSelectedBatch = createAsyncThunk(
+  "anchor/mintSelectedBatch",
+  async ({ credIds, filters = {} }, thunkAPI) => {
+    try {
+      const token = thunkAPI.getState()?.auth?.user?.token;
+      if (!token) throw new Error("Not authenticated");
+      const res = await anchorService.mintSelected({ credIds }, token);
+      // Refresh candidates using same filters
+      await thunkAPI.dispatch(loadAnchorCandidates(filters));
+      return res;
     } catch (e) {
       return thunkAPI.rejectWithValue(msg(e));
     }
@@ -138,6 +186,10 @@ const initialState = {
   anchored: [],
   isLoadingAnchored: false,
 
+  // ---------- NEW: anchor candidates (unanchored issued VCs) ----------
+  candidates: [],
+  isLoadingCandidates: false,
+
   // Generic status
   isError: false,
   message: "",
@@ -157,6 +209,7 @@ const anchorSlice = createSlice({
       s.isLoadingRecent15 = false;
       s.isLoadingRecent30 = false;
       s.isLoadingAnchored = false;
+      s.isLoadingCandidates = false;
       s.isError = false;
       s.message = "";
       s.lastAction = null;
@@ -286,6 +339,38 @@ const anchorSlice = createSlice({
         s.isLoadingAnchored = false;
         s.isError = true;
         s.message = a.payload;
+      })
+
+      // ---------- NEW: candidates ----------
+      .addCase(loadAnchorCandidates.pending, (s) => {
+        s.isLoadingCandidates = true;
+        s.isError = false;
+        s.message = "";
+      })
+      .addCase(loadAnchorCandidates.fulfilled, (s, a) => {
+        s.isLoadingCandidates = false;
+        s.candidates = a.payload || [];
+      })
+      .addCase(loadAnchorCandidates.rejected, (s, a) => {
+        s.isLoadingCandidates = false;
+        s.isError = true;
+        s.message = a.payload;
+      })
+
+      // ---------- NEW: mintSelectedBatch ----------
+      .addCase(mintSelectedBatch.pending, (s) => {
+        s.isMinting = true;
+        s.isError = false;
+        s.message = "";
+      })
+      .addCase(mintSelectedBatch.fulfilled, (s, a) => {
+        s.isMinting = false;
+        s.lastAction = a.payload || null;
+      })
+      .addCase(mintSelectedBatch.rejected, (s, a) => {
+        s.isMinting = false;
+        s.isError = true;
+        s.message = a.payload;
       });
   },
 });
@@ -294,11 +379,17 @@ export const { resetAnchorState, recomputeQueueToday } = anchorSlice.actions;
 export default anchorSlice.reducer;
 
 // -------------------- NULL-SAFE SELECTORS --------------------
-export const selectAnchorState     = (s) => s?.anchor ?? initialState;
-export const selectQueue           = (s) => s?.anchor?.queue ?? [];
-export const selectQueueToday      = (s) => s?.anchor?.queueToday ?? [];
-export const selectRecent15        = (s) => s?.anchor?.recent15 ?? [];
-export const selectRecent30        = (s) => s?.anchor?.recent30 ?? [];
-// ---------- NEW
-export const selectAnchored        = (s) => s?.anchor?.anchored ?? [];
-export const selectIsLoadingAnchored = (s) => s?.anchor?.isLoadingAnchored ?? false;
+export const selectAnchorState = (s) => s?.anchor ?? initialState;
+export const selectQueue = (s) => s?.anchor?.queue ?? [];
+export const selectQueueToday = (s) => s?.anchor?.queueToday ?? [];
+export const selectRecent15 = (s) => s?.anchor?.recent15 ?? [];
+export const selectRecent30 = (s) => s?.anchor?.recent30 ?? [];
+export const selectAnchored = (s) => s?.anchor?.anchored ?? [];
+export const selectIsLoadingAnchored = (s) =>
+  s?.anchor?.isLoadingAnchored ?? false;
+
+// NEW
+export const selectAnchorCandidates = (s) =>
+  s?.anchor?.candidates ?? [];
+export const selectIsLoadingCandidates = (s) =>
+  s?.anchor?.isLoadingCandidates ?? false;
