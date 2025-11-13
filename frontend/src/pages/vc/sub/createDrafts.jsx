@@ -407,7 +407,7 @@ export default function CreateDrafts() {
   // Load saved filters (students) on mount — BUT if studentNumber is in URL, prefill and APPLY immediately.
   useEffect(() => {
     if (qsStudentNumber) {
-      setQ(qsStudentNumber);                          // prefill input
+      setQ(qsStudentNumber); // prefill input
       dispatch(getPassingStudents({ q: qsStudentNumber })); // auto-apply
       setCurrentPage(1);
       return; // don't overwrite with saved filters
@@ -640,62 +640,70 @@ export default function CreateDrafts() {
     [students]
   );
 
-  const normalizeCreatedArray = useCallback((createdObj, refreshed, intendedMap) => {
-    const explicit =
-      (createdObj?.items && Array.isArray(createdObj.items) && createdObj.items) ||
-      (createdObj?.createdItems &&
-        Array.isArray(createdObj.createdItems) &&
-        createdObj.createdItems) ||
-      [];
+  const normalizeCreatedArray = useCallback(
+    (createdObj, refreshed, intendedMap) => {
+      const explicit =
+        (createdObj?.items && Array.isArray(createdObj.items) && createdObj.items) ||
+        (createdObj?.createdItems &&
+          Array.isArray(createdObj.createdItems) &&
+          createdObj.createdItems) ||
+        [];
 
-    if (explicit.length) {
-      return explicit.map((it) => ({
-        studentId: getStudentIdFromItem(it),
-        name: getNameFromItem(it, buildNameFromId(getStudentIdFromItem(it))),
-        type: getTypeFromItem(it) || intendedMap.type,
-        tx_no: getTxFromItem(it),
-        draftId: it._id || it.draftId,
+      if (explicit.length) {
+        return explicit.map((it) => ({
+          studentId: getStudentIdFromItem(it),
+          name: getNameFromItem(it, buildNameFromId(getStudentIdFromItem(it))),
+          type: getTypeFromItem(it) || intendedMap.type,
+          tx_no: getTxFromItem(it),
+          draftId: it._id || it.draftId,
+        }));
+      }
+
+      // Fallback: infer from refreshed
+      const wantedIds = new Set(intendedMap.studentIds);
+      const intendedType = intendedMap.type;
+      const intendedPurpose = intendedMap.purpose;
+
+      const arr = (refreshed || []).filter((d) => {
+        const sid = d.student?._id || d.studentId || d.student || "";
+        const matchId = sid && wantedIds.has(String(sid));
+        const matchType = normalizeType(d.type) === intendedType;
+        const matchPurpose = normalizePurpose(d.purpose) === intendedPurpose;
+        return matchId && matchType && matchPurpose;
+      });
+
+      return arr.map((d) => ({
+        studentId: d.student?._id || d.studentId || d.student || "",
+        name: d.student?.fullName || d.student?.name || "—",
+        type: normalizeType(d.type),
+        tx_no: getTxFromItem(d),
+        draftId: d._id,
       }));
-    }
+    },
+    [buildNameFromId]
+  );
 
-    // Fallback: infer from refreshed
-    const wantedIds = new Set(intendedMap.studentIds);
-    const intendedType = intendedMap.type;
-    const intendedPurpose = intendedMap.purpose;
-
-    const arr = (refreshed || []).filter((d) => {
-      const sid = d.student?._id || d.studentId || d.student || "";
-      const matchId = sid && wantedIds.has(String(sid));
-      const matchType = normalizeType(d.type) === intendedType;
-      const matchPurpose = normalizePurpose(d.purpose) === intendedPurpose;
-      return matchId && matchType && matchPurpose;
-    });
-
-    return arr.map((d) => ({
-      studentId: d.student?._id || d.studentId || d.student || "",
-      name: d.student?.fullName || d.student?.name || "—",
-      type: normalizeType(d.type),
-      tx_no: getTxFromItem(d),
-      draftId: d._id,
-    }));
-  }, [buildNameFromId]);
-
-  const normalizeDuplicateArray = useCallback((createdObj) => {
-    const dups =
-      (createdObj?.duplicates && Array.isArray(createdObj.duplicates) && createdObj.duplicates) ||
-      (createdObj?.duplicateItems &&
-        Array.isArray(createdObj.duplicateItems) &&
-        createdObj.duplicateItems) ||
-      [];
-    const ids = dups.map((x) =>
-      typeof x === "string"
-        ? x
-        : x?.studentId || x?.student?.id || x?.student?._id || x?.student
-    );
-    const uniqIds = Array.from(new Set(ids.filter(Boolean).map(String)));
-    const names = uniqIds.map((id) => buildNameFromId(id));
-    return { ids: uniqIds, names };
-  }, [buildNameFromId]);
+  const normalizeDuplicateArray = useCallback(
+    (createdObj) => {
+      const dups =
+        (createdObj?.duplicates &&
+          Array.isArray(createdObj.duplicates) &&
+          createdObj.duplicates) ||
+        (createdObj?.duplicateItems &&
+          Array.isArray(createdObj.duplicateItems) &&
+          createdObj.duplicateItems) ||
+        [];
+      const ids = dups.map((x) =>
+        typeof x === "string"
+          ? x
+          : x?.studentId || x?.student?.id || x?.student?._id || x?.student
+      );
+      const uniqIds = Array.from(new Set(ids.filter(Boolean).map(String)));
+      const names = uniqIds.map((id) => buildNameFromId(id));
+      return { ids: uniqIds, names };
+    },
+    [buildNameFromId]
+  );
 
   const handleClickCreate = useCallback(() => {
     if (!templateId) return alert("Please select a VC template.");
@@ -714,73 +722,76 @@ export default function CreateDrafts() {
     setShowConfirm(true);
   }, [templateId, vcType, purpose, selectedRows, students]);
 
-  const actuallyCreate = useCallback(async (studentIdsToCreate) => {
-    const exp = computeExpiration();
-    const normalizedPurpose = normalizePurpose(purpose);
+  const actuallyCreate = useCallback(
+    async (studentIdsToCreate) => {
+      const exp = computeExpiration();
+      const normalizedPurpose = normalizePurpose(purpose);
 
-    const payload = studentIdsToCreate.map((studentId) => ({
-      studentId,
+      const payload = studentIdsToCreate.map((studentId) => ({
+        studentId,
+        templateId,
+        type: vcType,
+        purpose: normalizedPurpose,
+        anchor: !!anchorNow,
+        ...(exp ? { expiration: exp } : {}),
+      }));
+
+      const intendedMap = {
+        studentIds: studentIdsToCreate.map(String),
+        type: vcType,
+        purpose: normalizedPurpose,
+      };
+
+      try {
+        const result = await dispatch(createDraftsThunk(payload)).unwrap();
+        const createdObj = result?.created || {};
+        const refreshed = result?.refreshed || [];
+
+        const { ids: dupStudentIds, names: dupStudentNames } =
+          normalizeDuplicateArray(createdObj);
+
+        if (studentIdsToCreate.length > 1 && dupStudentIds.length) {
+          setDupIds(dupStudentIds);
+          setDupNames(dupStudentNames);
+          setShowDuplicateError(true);
+          return;
+        }
+
+        const createdItems = normalizeCreatedArray(createdObj, refreshed, intendedMap);
+
+        if (studentIdsToCreate.length === 1) {
+          const one =
+            createdItems[0] || {
+              studentId: studentIdsToCreate[0],
+              name: buildNameFromId(studentIdsToCreate[0]),
+              type: vcType,
+              tx_no: "",
+            };
+          setSingleSuccessItem(one);
+          setShowSingleSuccess(true);
+        } else {
+          setBatchSuccessItems(createdItems);
+          setShowBatchSuccess(true);
+        }
+
+        clearSelection();
+      } catch (err) {
+        alert(typeof err === "string" ? err : err?.message || "Failed to create drafts.");
+      }
+    },
+    [
+      computeExpiration,
+      purpose,
       templateId,
-      type: vcType,
-      purpose: normalizedPurpose,
-      anchor: !!anchorNow,
-      ...(exp ? { expiration: exp } : {}),
-    }));
-
-    const intendedMap = {
-      studentIds: studentIdsToCreate.map(String),
-      type: vcType,
-      purpose: normalizedPurpose,
-    };
-
-    try {
-      const result = await dispatch(createDraftsThunk(payload)).unwrap();
-      const createdObj = result?.created || {};
-      const refreshed = result?.refreshed || [];
-
-      const { ids: dupStudentIds, names: dupStudentNames } =
-        normalizeDuplicateArray(createdObj);
-
-      if (studentIdsToCreate.length > 1 && dupStudentIds.length) {
-        setDupIds(dupStudentIds);
-        setDupNames(dupStudentNames);
-        setShowDuplicateError(true);
-        return;
-      }
-
-      const createdItems = normalizeCreatedArray(createdObj, refreshed, intendedMap);
-
-      if (studentIdsToCreate.length === 1) {
-        const one =
-          createdItems[0] || {
-            studentId: studentIdsToCreate[0],
-            name: buildNameFromId(studentIdsToCreate[0]),
-            type: vcType,
-            tx_no: "",
-          };
-        setSingleSuccessItem(one);
-        setShowSingleSuccess(true);
-      } else {
-        setBatchSuccessItems(createdItems);
-        setShowBatchSuccess(true);
-      }
-
-      clearSelection();
-    } catch (err) {
-      alert(typeof err === "string" ? err : err?.message || "Failed to create drafts.");
-    }
-  }, [
-    computeExpiration,
-    purpose,
-    templateId,
-    vcType,
-    anchorNow,
-    dispatch,
-    normalizeDuplicateArray,
-    normalizeCreatedArray,
-    buildNameFromId,
-    clearSelection,
-  ]);
+      vcType,
+      anchorNow,
+      dispatch,
+      normalizeDuplicateArray,
+      normalizeCreatedArray,
+      buildNameFromId,
+      clearSelection,
+    ]
+  );
 
   const onConfirmClose = useCallback(
     (ok) => {
@@ -824,11 +835,8 @@ export default function CreateDrafts() {
     setSelectedViewId(null);
   };
 
-  // Query mode: when searching, show *only* view action (no selection UI)
-  const queryMode = q.trim().length > 0;
-
   /* ---------------------------------- UI ---------------------------------- */
-  const baseColCount = queryMode ? 6 : 8; // for colSpan in loaders/empties
+  const baseColCount = 8; // for colSpan in loaders/empties
 
   return (
     <section className="container py-4">
@@ -910,22 +918,25 @@ export default function CreateDrafts() {
               ) : null}
               <Badge bg="secondary">Selected: {selectedRows.length}</Badge>
 
-              {!queryMode && (
-                <div className="ms-auto d-flex gap-2">
-                  <Button variant="outline-dark" size="sm" type="button" onClick={selectAllOnPage}>
-                    Toggle All (page)
-                  </Button>
-                  <Button
-                    variant="outline-danger"
-                    size="sm"
-                    type="button"
-                    onClick={clearSelection}
-                    disabled={selectedRows.length === 0}
-                  >
-                    Clear Selected
-                  </Button>
-                </div>
-              )}
+              <div className="ms-auto d-flex gap-2">
+                <Button
+                  variant="outline-dark"
+                  size="sm"
+                  type="button"
+                  onClick={selectAllOnPage}
+                >
+                  Toggle All (page)
+                </Button>
+                <Button
+                  variant="outline-danger"
+                  size="sm"
+                  type="button"
+                  onClick={clearSelection}
+                  disabled={selectedRows.length === 0}
+                >
+                  Clear Selected
+                </Button>
+              </div>
             </div>
           </Form>
         </Card.Body>
@@ -944,8 +955,8 @@ export default function CreateDrafts() {
             <Table bordered hover size="sm" className="align-middle mb-0">
               <thead className="table-light">
                 <tr>
-                  {!queryMode && <th style={{ width: 40 }} />}
-                  {!queryMode && <th>#</th>}
+                  <th style={{ width: 40 }} />
+                  <th>#</th>
                   <th>Profile</th>
                   <th>Student No.</th>
                   <th>Full Name</th>
@@ -964,33 +975,30 @@ export default function CreateDrafts() {
                   </tr>
                 ) : visibleStudents.length > 0 ? (
                   visibleStudents.map((stu, idx) => {
-                    const isChecked = !queryMode && selectedRows.includes(stu._id);
+                    const isChecked = selectedRows.includes(stu._id);
                     const dateGraduated = toDateOnly(stu.dateGraduated);
 
                     return (
                       <tr
                         key={stu._id}
                         onClick={(e) => {
-                          if (queryMode) return;
                           if (e.target.closest("button, a, input, label")) return;
                           toggleRow(stu._id);
                         }}
-                        className={!queryMode && isChecked ? "table-success" : ""}
-                        style={{ cursor: queryMode ? "default" : "pointer" }}
+                        className={isChecked ? "table-success" : ""}
+                        style={{ cursor: "pointer" }}
                       >
-                        {!queryMode && (
-                          <td>
-                            <Form.Check
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                toggleRow(stu._id);
-                              }}
-                            />
-                          </td>
-                        )}
-                        {!queryMode && <td>{indexOfFirst + idx + 1}</td>}
+                        <td>
+                          <Form.Check
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              toggleRow(stu._id);
+                            }}
+                          />
+                        </td>
+                        <td>{indexOfFirst + idx + 1}</td>
 
                         <td>
                           {stu.photoUrl ? (
@@ -1018,7 +1026,10 @@ export default function CreateDrafts() {
                               size="sm"
                               variant="outline-secondary"
                               title="View"
-                              onClick={() => openView(stu._id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openView(stu._id);
+                              }}
                             >
                               <FaEye />
                             </Button>
@@ -1331,10 +1342,14 @@ export default function CreateDrafts() {
 
       {/* View Student Modal (full details) */}
       <Modal show={showView} onHide={closeView} centered size="lg">
-        <Modal.Header closeButton><Modal.Title>View Student</Modal.Title></Modal.Header>
+        <Modal.Header closeButton>
+          <Modal.Title>View Student</Modal.Title>
+        </Modal.Header>
         <Modal.Body>
           {isLoadingDetail ? (
-            <div className="text-center py-4"><Spinner animation="border" /></div>
+            <div className="text-center py-4">
+              <Spinner animation="border" />
+            </div>
           ) : !studentDetail ? (
             <div className="text-muted">No data.</div>
           ) : (
@@ -1347,7 +1362,11 @@ export default function CreateDrafts() {
                   </Col>
                   <Col md={4}>
                     <Form.Label>Student No.</Form.Label>
-                    <Form.Control value={studentDetail.studentNumber || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.studentNumber || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
@@ -1384,29 +1403,51 @@ export default function CreateDrafts() {
                 <Row className="mb-3">
                   <Col md={12}>
                     <Form.Label>Address</Form.Label>
-                    <Form.Control as="textarea" rows={2} value={studentDetail.address || ""} disabled readOnly />
+                    <Form.Control
+                      as="textarea"
+                      rows={2}
+                      value={studentDetail.address || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
                 <Row className="mb-3">
                   <Col md={6}>
                     <Form.Label>Place of Birth</Form.Label>
-                    <Form.Control value={studentDetail.placeOfBirth || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.placeOfBirth || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                   <Col md={6}>
                     <Form.Label>High School</Form.Label>
-                    <Form.Control value={studentDetail.highSchool || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.highSchool || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
                 <Row className="mb-3">
                   <Col md={6}>
                     <Form.Label>Date Admission</Form.Label>
-                    <Form.Control value={toDateOnly(studentDetail.dateAdmission)} disabled readOnly />
+                    <Form.Control
+                      value={toDateOnly(studentDetail.dateAdmission)}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                   <Col md={6}>
                     <Form.Label>Date Graduated</Form.Label>
-                    <Form.Control value={toDateOnly(studentDetail.dateGraduated)} disabled readOnly />
+                    <Form.Control
+                      value={toDateOnly(studentDetail.dateGraduated)}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
@@ -1419,7 +1460,8 @@ export default function CreateDrafts() {
                           ? studentDetail.gwa
                           : ""
                       }
-                      disabled readOnly
+                      disabled
+                      readOnly
                     />
                   </Col>
                   <Col md={6}>
@@ -1430,12 +1472,21 @@ export default function CreateDrafts() {
               </Col>
 
               <Col md={4}>
-                <div className="border rounded d-flex flex-column align-items-center justify-content-center p-3" style={{ minHeight: 260 }}>
+                <div
+                  className="border rounded d-flex flex-column align-items-center justify-content-center p-3"
+                  style={{ minHeight: 260 }}
+                >
                   {studentDetail.photoUrl ? (
                     <img
                       src={studentDetail.photoUrl}
                       alt="Profile"
-                      style={{ width: 180, height: 180, objectFit: "cover", borderRadius: 8, border: "1px solid #eee" }}
+                      style={{
+                        width: 180,
+                        height: 180,
+                        objectFit: "cover",
+                        borderRadius: 8,
+                        border: "1px solid #eee",
+                      }}
                     />
                   ) : (
                     <div className="text-muted">No profile photo</div>
@@ -1446,7 +1497,9 @@ export default function CreateDrafts() {
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={closeView}>Close</Button>
+          <Button variant="secondary" onClick={closeView}>
+            Close
+          </Button>
         </Modal.Footer>
       </Modal>
 
