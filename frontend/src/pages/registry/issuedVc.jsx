@@ -25,6 +25,7 @@ const CLAIMED_OPTS = [
   { v: "claimed", label: "Claimed" },     // claimed=true
 ];
 const RANGE_OPTS = ["All", "today", "1w", "1m", "6m"];
+const PAGE_SIZES = [10, 20, 50, 100];
 
 function normParams({ q, range, claimed }) {
   const out = {};
@@ -47,6 +48,10 @@ export default function IssuedVc() {
   const [claimed, setClaimed] = useState(DEFAULTS.claimed);
   const [showSettings, setShowSettings] = useState(false);
 
+  // pagination
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+
   // refresh list after claim modal closes
   const claimModalOpen = useSelector((s) => s.issuance.claimModal.open);
   const wasOpenRef = useRef(false);
@@ -59,6 +64,7 @@ export default function IssuedVc() {
 
   const apply = useCallback(() => {
     dispatch(loadIssuedVCs(normParams({ q, range, claimed })));
+    setPage(1);
   }, [dispatch, q, range, claimed]);
 
   const reset = useCallback(() => {
@@ -66,11 +72,33 @@ export default function IssuedVc() {
     setRange(DEFAULTS.range);
     setClaimed(DEFAULTS.claimed);
     dispatch(loadIssuedVCs(normParams(DEFAULTS)));
+    setPage(1);
   }, [dispatch]);
 
   useEffect(() => { apply(); }, []); // initial load
 
   const rows = issuedVCs || [];
+
+  // pagination derived
+  const total = rows.length;
+  const pageCount = Math.max(
+    1,
+    Math.ceil(Math.max(0, total) / Math.max(1, limit))
+  );
+
+  const pageRows = useMemo(() => {
+    const start = (page - 1) * limit;
+    return rows.slice(start, start + limit);
+  }, [rows, page, limit]);
+
+  // clamp page when data/limit changes
+  useEffect(() => {
+    const pc = Math.max(
+      1,
+      Math.ceil(Math.max(0, rows.length) / Math.max(1, limit))
+    );
+    if (page > pc) setPage(pc);
+  }, [rows.length, limit, page]);
 
   return (
     <section className="container py-4">
@@ -156,7 +184,7 @@ export default function IssuedVc() {
                     </td>
                   </tr>
                 ) : rows.length ? (
-                  rows.map((vc) => {
+                  pageRows.map((vc) => {
                     const subj = vc.vc_payload?.credentialSubject || {};
                     const anchor = vc?.anchoring?.state || "unanchored";
                     const isClaimed = !!vc?.claimed_at;
@@ -205,6 +233,61 @@ export default function IssuedVc() {
             </Table>
           </div>
         </Card.Body>
+        <Card.Footer className="d-flex align-items-center justify-content-between">
+          <div className="text-muted small">
+            Page {page} of {pageCount}
+            {total ? ` • Total ${total}` : ""}
+          </div>
+          <div className="d-flex gap-2">
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+            >
+              « First
+            </Button>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              ‹ Prev
+            </Button>
+            <Form.Select
+              size="sm"
+              style={{ width: 90 }}
+              value={limit}
+              onChange={(e) => {
+                setLimit(Number(e.target.value));
+                setPage(1);
+              }}
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n}/page
+                </option>
+              ))}
+            </Form.Select>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={page >= pageCount}
+            >
+              Next ›
+            </Button>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage(pageCount)}
+              disabled={page >= pageCount}
+            >
+              Last »
+            </Button>
+          </div>
+        </Card.Footer>
       </Card>
 
       <FilterModal

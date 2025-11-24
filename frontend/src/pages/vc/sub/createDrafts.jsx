@@ -1140,6 +1140,7 @@ export default function CreateDrafts() {
             </Col>
 
             {/* Row 2: Anchor (left) + Expiration (right) */}
+          
             <Col md={6}>
               <Form.Label className="small text-muted mb-1">Anchor</Form.Label>
               <Form.Check
@@ -1156,44 +1157,54 @@ export default function CreateDrafts() {
 
             <Col md={6}>
               <Form.Label className="small text-muted mb-1">Expiration</Form.Label>
-              <Form.Select
-                value={expirationMode}
-                onChange={(e) => setExpirationMode(e.target.value)}
-              >
-                <option value="none">None</option>
-                <option value="1m">1 month</option>
-                <option value="3m">3 months</option>
-                <option value="6m">6 months</option>
-                <option value="12m">12 months</option>
-                <option value="date">Specific date…</option>
-              </Form.Select>
 
-              {expirationMode === "date" && (
-                <div className="mt-2">
-                  <Form.Control
-                    type="date"
-                    value={expirationDate}
-                    onChange={(e) => setExpirationDate(e.target.value)}
-                  />
+              {expirationMode === "date" ? (
+                <>
+                  <InputGroup>
+                    <Form.Control
+                      type="date"
+                      value={expirationDate}
+                      onChange={(e) => setExpirationDate(e.target.value)}
+                    />
+                    <Button
+                      variant="outline-dark"
+                      type="button"
+                      title="Expiration settings"
+                      onClick={() => setShowExpSettings(true)}
+                    >
+                      <FaCog />
+                    </Button>
+                  </InputGroup>
                   <Form.Text className="text-muted">
                     Pick a specific expiry date (YYYY-MM-DD).
                   </Form.Text>
-                </div>
+                </>
+              ) : (
+                <InputGroup>
+                  <Form.Select
+                    value={expirationMode}
+                    onChange={(e) => setExpirationMode(e.target.value)}
+                  >
+                    <option value="none">None</option>
+                    <option value="1m">1 month</option>
+                    <option value="3m">3 months</option>
+                    <option value="6m">6 months</option>
+                    <option value="12m">12 months</option>
+                    <option value="date">Specific date…</option>
+                  </Form.Select>
+                  <Button
+                    variant="outline-dark"
+                    type="button"
+                    title="Expiration settings"
+                    onClick={() => setShowExpSettings(true)}
+                  >
+                    <FaCog />
+                  </Button>
+                </InputGroup>
               )}
-
-              <div className="mt-2">
-                <Button
-                  variant="outline-dark"
-                  className="w-100"
-                  title="Expiration settings"
-                  type="button"
-                  onClick={() => setShowExpSettings(true)}
-                >
-                  <FaCog className="me-2" />
-                  More settings
-                </Button>
-              </div>
             </Col>
+
+
           </Row>
         </Card.Body>
 

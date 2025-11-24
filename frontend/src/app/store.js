@@ -9,6 +9,8 @@ import issuanceReducer from '../features/issuance/issuanceSlice'
 import accountReducer from '../features/accounts/accountSlice'
 import requestsReducer from "../features/request/requestsSlice";
 import anchorReducer from "../features/anchor/anchorSlice"
+import issueReducer from '../features/issuance/issueSlice'
+import paymentReducer from '../features/payments/paymentSlice'
 import {
   persistStore,
   persistReducer,
@@ -41,6 +43,8 @@ export const store = configureStore({
     accounts: accountReducer,   
     requests:requestsReducer,
     anchor: anchorReducer,
+    issue: issueReducer,
+    payment: paymentReducer
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

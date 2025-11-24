@@ -27,6 +27,8 @@ const shapeRow = (r = {}) => {
     photoUrl,
     vcType: String(r.type || "").toUpperCase(),          // "TOR" | "DIPLOMA"
     vcPurpose: String(r.purpose || "").toLowerCase(),    // normalized
+    anchorNow: !!r.anchorNow,                         // ✅ NEW
+    draftId: r.draft || null,                         // ✅ NEW
   };
 };
 

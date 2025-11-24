@@ -348,83 +348,87 @@ export default function AuditLogs() {
           </span>
         </Card.Header>
         <Card.Body className="p-0">
-          <div className="table-responsive">
-            <Table hover responsive className="mb-0 align-middle">
-              <thead className="table-light">
-                <tr>
-                  <th style={{ width: 40 }}>#</th>
-                  <th>Time</th>
-                  <th>Source</th>
-                  <th>Actor</th>
-                  <th>Method</th>
-                  <th>Path</th>
-                  <th>Status</th>
-                  <th>Latency</th>
-                  <th>Route Tag</th>
-                  <th>IP</th>
-                  <th style={{ width: 80 }}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={11} className="text-center py-4">
-                      <Spinner animation="border" className="me-2" /> Loading…
-                    </td>
-                  </tr>
-                ) : items.length ? (
-                  items.map((row, idx) => {
-                    const i = startIdx + idx;
-                    const ts = row?.ts ? new Date(row.ts) : null;
-                    const src = sourceFromRouteTag(row?.routeTag);
-                    const role = row?.actorRole || "—";
-                    const actor = row?.actorId ? shortId(row.actorId) : "—";
-                    const method = row?.method || "—";
-                    const path = row?.path || "—";
-                    const status = row?.status ?? "—";
-                    const latency = Number(row?.latencyMs) || 0;
-                    const tag = row?.routeTag || "—";
-                    const ip = row?.ip || "—";
-                    return (
-                      <tr key={row?._id || `${i}-${row?.ts || Math.random()}`}>
-                        <td className="text-muted">{i}</td>
-                        <td title={row?.ts || ""}>{ts ? ts.toLocaleString() : "—"}</td>
-                        <td>{src !== "—" ? <Badge bg="secondary">{src}</Badge> : "—"}</td>
-                        <td>
-                          <div className="d-flex flex-column">
-                            <span title={String(row?.actorId || "")}>{actor}</span>
-                            <span className="text-muted small">{role}</span>
-                          </div>
-                        </td>
-                        <td><Badge bg="dark">{method}</Badge></td>
-                        <td className="text-truncate" style={{ maxWidth: 280 }} title={path}>{path}</td>
-                        <td><Badge bg={statusVariant(status)}>{status}</Badge></td>
-                        <td title={`${latency} ms`}>{latency.toLocaleString()} ms</td>
-                        <td className="text-truncate" style={{ maxWidth: 200 }} title={tag}>{tag}</td>
-                        <td title={ip}>{ip}</td>
-                        <td>
-                          <Button
-                            size="sm"
-                            variant="outline-primary"
-                            onClick={() => { setDetail(row); setShowDetails(true); }}
-                          >
-                            View
-                          </Button>
-                        </td>
-                      </tr>
-                    );
-                  })
-                ) : (
-                  <tr>
-                    <td colSpan={11} className="text-center py-4 text-muted">
-                      No audit records found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </Table>
-          </div>
-        </Card.Body>
+  <div className="table-responsive">
+    <Table hover responsive className="mb-0 align-middle">
+      <thead className="table-light">
+        <tr>
+          <th style={{ width: 40 }}>#</th>
+          <th>Actor</th>
+          <th>Method</th>
+          <th>Date</th>
+          <th style={{ width: 80 }}>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {loading ? (
+          <tr>
+            {/* 5 columns now */}
+            <td colSpan={5} className="text-center py-4">
+              <Spinner animation="border" className="me-2" /> Loading…
+            </td>
+          </tr>
+        ) : items.length ? (
+          items.map((row, idx) => {
+            const i = startIdx + idx;
+            const ts = row?.ts ? new Date(row.ts) : null;
+            const role = row?.actorRole || "—";
+            const actor = row?.actorId ? shortId(row.actorId) : "—";
+            const method = row?.method || "—";
+
+            return (
+              <tr
+                key={row?._id || `${i}-${row?.ts || Math.random()}`}
+              >
+                {/* # */}
+                <td className="text-muted">{i}</td>
+
+                {/* Actor */}
+                <td>
+                  <div className="d-flex flex-column">
+                    <span title={String(row?.actorId || "")}>{actor}</span>
+                    <span className="text-muted small">{role}</span>
+                  </div>
+                </td>
+
+                {/* Method */}
+                <td>
+                  <Badge bg="dark">{method}</Badge>
+                </td>
+
+                {/* Date / Time */}
+                <td title={row?.ts || ""}>
+                  {ts ? ts.toLocaleString() : "—"}
+                </td>
+
+                {/* Action */}
+                <td>
+                  <Button
+                    size="sm"
+                    variant="outline-primary"
+                    onClick={() => {
+                      setDetail(row);
+                      setShowDetails(true);
+                    }}
+                  >
+                    View
+                  </Button>
+                </td>
+              </tr>
+            );
+          })
+        ) : (
+          <tr>
+            {/* 5 columns now */}
+            <td colSpan={5} className="text-center py-4 text-muted">
+              No audit records found.
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </Table>
+  </div>
+</Card.Body>
+
 
         {/* Footer with pagination */}
         <Card.Footer className="d-flex align-items-center justify-content-between">

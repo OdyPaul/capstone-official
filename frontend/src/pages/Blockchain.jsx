@@ -232,7 +232,7 @@ export default function Blockchain() {
   };
 
   // ------- one-shot fetch (and then cache) -------
-  const fetchOnce = async () => {
+    const fetchOnce = async () => {
     try {
       setErrMsg("");
       setPriceErr(null);
@@ -253,7 +253,11 @@ export default function Blockchain() {
         gasPromise,
         fetchPricePhp(),
         fetchBalance().catch(() => null),
-        fetchLatestCreatedContractBy().catch(() => ({ address: null, active: null, tx: null })),
+        fetchLatestCreatedContractBy().catch(() => ({
+          address: null,
+          active: null,
+          tx: null,
+        })),
       ]);
 
       let finalCreated = createdRes;
@@ -264,7 +268,7 @@ export default function Blockchain() {
         if (hinted) finalCreated = hinted;
       }
 
-      // set state
+      // --- base state updates ---
       setGasData(gasRes);
       if (priceRes) {
         setTokenPricePhp(priceRes.php);
@@ -272,35 +276,42 @@ export default function Blockchain() {
       } else {
         setTokenPricePhp(null);
         setUsedPriceId(null);
-        setPriceErr(NET.priceIdCandidates.length ? "Price service unavailable" : "Testnet (no fiat)");
+        setPriceErr(
+          NET.priceIdCandidates.length
+            ? "Price service unavailable"
+            : "Testnet (no fiat)"
+        );
       }
       if (balRes !== null) setBalance(balRes);
       setContractInfo(finalCreated);
 
-      // history point
+      // --- history point + snapshot (✅ this is the important part) ---
       const safe = parseFloat(gasRes.SafeGasPrice);
       const propose = parseFloat(gasRes.ProposeGasPrice);
       const fast = parseFloat(gasRes.FastGasPrice);
       const now = Date.now();
-      let nextHistory = [];
-      if ([safe, propose, fast].every(Number.isFinite)) {
-        nextHistory = (prev => {
-          const updated = [...prev, { t: now, safe, propose, fast }];
-          return updated.slice(-120);
-        })([]);
-      }
 
-      setHistory(nextHistory);
+      setHistory((prev) => {
+        const base = Array.isArray(prev) ? prev : [];
 
-      // save compact snapshot to localStorage for the day
-      saveSnapshot({
-        ts: Date.now(),
-        gasData: gasRes,
-        tokenPricePhp: priceRes?.php ?? null,
-        usedPriceId: priceRes?.idUsed ?? null,
-        balance: balRes ?? null,
-        contractInfo: finalCreated,
-        history: nextHistory,
+        let updated = base;
+        if ([safe, propose, fast].every(Number.isFinite)) {
+          updated = [...base, { t: now, safe, propose, fast }];
+          updated = updated.slice(-120); // keep last 120 points
+        }
+
+        // Save snapshot with the full updated history
+        saveSnapshot({
+          ts: Date.now(),
+          gasData: gasRes,
+          tokenPricePhp: priceRes?.php ?? null,
+          usedPriceId: priceRes?.idUsed ?? null,
+          balance: balRes ?? null,
+          contractInfo: finalCreated,
+          history: updated,
+        });
+
+        return updated;
       });
     } catch (err) {
       setErrMsg(err?.message || "Failed to load data.");
@@ -349,12 +360,13 @@ export default function Blockchain() {
   // ------- memos -------
   const chartSeries = useMemo(
     () => [
-      { name: "Safe", data: history.map((p) => [p.t, p.safe]) },
-      { name: "Average", data: history.map((p) => [p.t, p.propose]) },
-      { name: "Fast", data: history.map((p) => [p.t, p.fast]) },
+      { name: "Safe", data: history.map((p) => ({ x: p.t, y: p.safe })) },
+      { name: "Average", data: history.map((p) => ({ x: p.t, y: p.propose })) },
+      { name: "Fast", data: history.map((p) => ({ x: p.t, y: p.fast })) },
     ],
     [history]
   );
+
 
   const chartOptions = useMemo(
     () => ({

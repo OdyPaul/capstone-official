@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { NavLink } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { getDrafts, deleteDraft } from "../../features/draft_vc/vcSlice";
+import { getIssues, deleteIssue } from "../../features/issuance/issueSlice";
 import {
   Button,
   Card,
@@ -12,53 +12,142 @@ import {
   InputGroup,
   Badge,
   Modal,
+  Alert,
 } from "react-bootstrap";
 import { FaSearch, FaSync, FaCog, FaTrash, FaPlus, FaEye } from "react-icons/fa";
 
 /* ----------------------------- constants ----------------------------- */
+// We use this page as: "Issued credentials (unpaid)"
 const DEFAULTS = {
   range: "1m",
   program: "All",
   type: "All",
-  status: "draft",
+  status: "issued", // focus on issued
   q: "",
-  tx: "",
+  orderNo: "",
+  receiptNo: "",
+  unpaidOnly: true, // only without receipt_no
 };
-const VALID_STATUSES = ["draft", "signed", "anchored", "All"];
+
+const VALID_STATUSES = ["issued", "signed", "anchored", "void", "All"];
+
+// page size options + default (10 rows)
+const PAGE_SIZES = [10, 20, 50, 100];
+const DEFAULT_LIMIT = 10;
 
 /* ------------------------------ helpers ------------------------------ */
 const fmtDateTime = (v) => (v ? new Date(v).toLocaleString() : "—");
 const fmtDate = (v) =>
   v ? (v === "N/A" ? "N/A" : new Date(v).toLocaleDateString()) : "—";
 
-const getTxFromDraft = (d = {}) =>
-  d?.payment_tx_no || d?.tx_no || d?.tx || d?.client_tx || null;
+const statusBadgeVariant = (st) => {
+  if (st === "anchored") return "success";
+  if (st === "signed") return "primary";
+  if (st === "void") return "danger";
+  if (st === "issued") return "secondary";
+  return "secondary";
+};
 
-const statusBadgeVariant = (st) =>
-  st === "anchored" ? "success" : st === "signed" ? "primary" : "secondary";
+/* --------------------------- details modal --------------------------- */
+function IssueDetailsModal({ show, onHide, issue, onDelete }) {
+  if (!issue) return null;
 
-/* --------------------------- small components --------------------------- */
-function TxViewerModal({ show, onHide, txNo }) {
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(txNo || "");
-    } catch {}
-  };
+  const s = issue.student || {};
+  const t = issue.template || {};
+
+  const fullName =
+    s.fullName ||
+    `${s.lastName || ""}, ${s.firstName || ""}${
+      s.middleName ? " " + s.middleName : ""
+    }`.trim() ||
+    "—";
+
+  const canDelete = (issue.status || "") === "issued" && !issue.receipt_no;
+
   return (
-    <Modal show={show} onHide={onHide} centered>
+    <Modal show={show} onHide={onHide} centered size="lg">
       <Modal.Header closeButton>
-        <Modal.Title>Transaction ID</Modal.Title>
+        <Modal.Title>Issuance Details</Modal.Title>
       </Modal.Header>
-      <Modal.Body>
-        <code className="d-inline-block p-2 bg-light rounded">{txNo || "—"}</code>
+      <Modal.Body style={{ maxHeight: "70vh", overflowY: "auto" }}>
+        <h5 className="mb-3">Student</h5>
+        <dl className="row mb-4">
+          <dt className="col-sm-3">Name</dt>
+          <dd className="col-sm-9">{fullName}</dd>
+
+          <dt className="col-sm-3">Student No.</dt>
+          <dd className="col-sm-9">{s.studentNumber || "—"}</dd>
+
+          <dt className="col-sm-3">Program</dt>
+          <dd className="col-sm-9">{s.program || issue.program || "—"}</dd>
+
+          <dt className="col-sm-3">Date Graduated</dt>
+          <dd className="col-sm-9">
+            {fmtDate(s.dateGraduated || issue.dateGraduated)}
+          </dd>
+        </dl>
+
+        <h5 className="mb-3">Issuance</h5>
+        <dl className="row mb-4">
+          <dt className="col-sm-3">Created</dt>
+          <dd className="col-sm-9">{fmtDateTime(issue.createdAt)}</dd>
+
+          <dt className="col-sm-3">Type</dt>
+          <dd className="col-sm-9">{issue.type || "—"}</dd>
+
+          <dt className="col-sm-3">Purpose</dt>
+          <dd className="col-sm-9">{issue.purpose || "—"}</dd>
+
+          <dt className="col-sm-3">Status</dt>
+          <dd className="col-sm-9">
+            <Badge bg={statusBadgeVariant(issue.status)}>
+              {issue.status || "issued"}
+            </Badge>
+          </dd>
+
+          <dt className="col-sm-3">Expiration</dt>
+          <dd className="col-sm-9">{fmtDate(issue.expiration)}</dd>
+
+          <dt className="col-sm-3">Amount</dt>
+          <dd className="col-sm-9">
+            {issue.amount != null ? issue.amount : "—"}{" "}
+            {issue.currency || "PHP"}
+          </dd>
+
+          <dt className="col-sm-3">Order No.</dt>
+          <dd className="col-sm-9">{issue.order_no || "—"}</dd>
+
+          <dt className="col-sm-3">Receipt No.</dt>
+          <dd className="col-sm-9">{issue.receipt_no || "—"}</dd>
+        </dl>
+
+        <h5 className="mb-3">Template</h5>
+        <dl className="row mb-0">
+          <dt className="col-sm-3">Name</dt>
+          <dd className="col-sm-9">{t.name || t.slug || "—"}</dd>
+
+          <dt className="col-sm-3">Version</dt>
+          <dd className="col-sm-9">{t.version || "—"}</dd>
+
+          <dt className="col-sm-3">Base Price</dt>
+          <dd className="col-sm-9">
+            {t.price != null ? t.price : "—"} PHP
+          </dd>
+        </dl>
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="outline-secondary" onClick={copy}>
-          Copy
-        </Button>
-        <Button variant="primary" onClick={onHide}>
+        <Button variant="secondary" onClick={onHide}>
           Close
         </Button>
+        {canDelete && typeof onDelete === "function" && (
+          <Button
+            variant="outline-danger"
+            onClick={() => onDelete(issue)}
+          >
+            <FaTrash className="me-2" />
+            Delete Issuance
+          </Button>
+        )}
       </Modal.Footer>
     </Modal>
   );
@@ -67,28 +156,52 @@ function TxViewerModal({ show, onHide, txNo }) {
 /* --------------------------------- page --------------------------------- */
 export default function Drafts() {
   const dispatch = useDispatch();
-  const { drafts, isLoadingList, draftFilters } = useSelector((s) => s.vc);
+  const {
+    issues,
+    issueFilters,
+    isLoadingList,
+    isError,
+    message,
+  } = useSelector((s) => s.issue || {});
 
   // local filter state (mirrors Redux/localStorage)
-  const [q, setQ] = useState(draftFilters?.q ?? DEFAULTS.q);
-  const [range, setRange] = useState(draftFilters?.range ?? DEFAULTS.range);
-  const [program, setProgram] = useState(draftFilters?.program ?? DEFAULTS.program);
-  const [type, setType] = useState(draftFilters?.type ?? DEFAULTS.type);
-  const [status, setStatus] = useState(
-    VALID_STATUSES.includes(draftFilters?.status) ? draftFilters.status : DEFAULTS.status
+  const [q, setQ] = useState(issueFilters?.q ?? DEFAULTS.q);
+  const [range, setRange] = useState(issueFilters?.range ?? DEFAULTS.range);
+  const [program, setProgram] = useState(
+    issueFilters?.program ?? DEFAULTS.program
   );
-  const [tx, setTx] = useState(draftFilters?.tx ?? DEFAULTS.tx);
+  const [type, setType] = useState(issueFilters?.type ?? DEFAULTS.type);
+  const [status, setStatus] = useState(
+    VALID_STATUSES.includes(issueFilters?.status)
+      ? issueFilters.status
+      : DEFAULTS.status
+  );
+  const [orderNo, setOrderNo] = useState(
+    issueFilters?.orderNo ?? DEFAULTS.orderNo
+  );
+  const [receiptNo, setReceiptNo] = useState(
+    issueFilters?.receiptNo ?? DEFAULTS.receiptNo
+  );
+  const [unpaidOnly, setUnpaidOnly] = useState(
+    typeof issueFilters?.unpaidOnly === "boolean"
+      ? issueFilters.unpaidOnly
+      : DEFAULTS.unpaidOnly
+  );
+
+  // pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(DEFAULT_LIMIT);
 
   // ui
   const [showSettings, setShowSettings] = useState(false);
-  const [showTx, setShowTx] = useState(false);
-  const [txNoToShow, setTxNoToShow] = useState("");
+  const [showDetails, setShowDetails] = useState(false);
+  const [detailsIssue, setDetailsIssue] = useState(null);
 
-  // initial load: restore saved filters -> default to status="draft"
+  // initial load: restore saved filters -> defaults to issued+unpaid
   useEffect(() => {
     const saved = (() => {
       try {
-        return JSON.parse(localStorage.getItem("lastDraftFilters")) || {};
+        return JSON.parse(localStorage.getItem("lastIssueFilters")) || {};
       } catch {
         return {};
       }
@@ -98,9 +211,16 @@ export default function Drafts() {
       range: saved.range ?? DEFAULTS.range,
       program: saved.program ?? DEFAULTS.program,
       type: saved.type ?? DEFAULTS.type,
-      status: VALID_STATUSES.includes(saved.status) ? saved.status : DEFAULTS.status,
+      status: VALID_STATUSES.includes(saved.status)
+        ? saved.status
+        : DEFAULTS.status,
       q: saved.q ?? DEFAULTS.q,
-      tx: saved.tx ?? DEFAULTS.tx,
+      orderNo: saved.orderNo ?? DEFAULTS.orderNo,
+      receiptNo: saved.receiptNo ?? DEFAULTS.receiptNo,
+      unpaidOnly:
+        typeof saved.unpaidOnly === "boolean"
+          ? saved.unpaidOnly
+          : DEFAULTS.unpaidOnly,
     };
 
     setRange(initial.range);
@@ -108,35 +228,74 @@ export default function Drafts() {
     setType(initial.type);
     setStatus(initial.status);
     setQ(initial.q);
-    setTx(initial.tx);
+    setOrderNo(initial.orderNo);
+    setReceiptNo(initial.receiptNo);
+    setUnpaidOnly(initial.unpaidOnly);
 
-    dispatch(getDrafts(initial));
+    dispatch(getIssues(initial));
   }, [dispatch]);
 
   // derived options
+  const rows = issues || [];
+
   const programOptions = useMemo(() => {
     const set = new Set();
-    (drafts || []).forEach((d) => {
+    rows.forEach((d) => {
       const p = d?.student?.program || d?.program;
       if (p) set.add(p);
     });
     return ["All", ...Array.from(set).sort()];
-  }, [drafts]);
+  }, [rows]);
 
-  const rows = drafts || [];
+  // totals + pagination derived values
+  const total = rows.length || 0;
+  const pageCount = Math.max(
+    1,
+    Math.ceil(Math.max(0, total) / Math.max(1, limit))
+  );
+  const startIndex = (page - 1) * limit;
+  const pageRows = rows.slice(startIndex, startIndex + limit);
+
+  // keep current page within bounds when data/limit changes
+  useEffect(() => {
+    if (page > pageCount) {
+      setPage(pageCount);
+    }
+  }, [page, pageCount]);
 
   // actions
   const persistAndFetch = useCallback(
     (filters) => {
-      localStorage.setItem("lastDraftFilters", JSON.stringify(filters));
-      dispatch(getDrafts(filters));
+      try {
+        localStorage.setItem("lastIssueFilters", JSON.stringify(filters));
+      } catch {}
+      dispatch(getIssues(filters));
     },
     [dispatch]
   );
 
   const applyFilters = useCallback(() => {
-    persistAndFetch({ q, range, program, type, status, tx });
-  }, [persistAndFetch, q, range, program, type, status, tx]);
+    persistAndFetch({
+      q,
+      range,
+      program,
+      type,
+      status,
+      orderNo,
+      receiptNo,
+      unpaidOnly,
+    });
+  }, [
+    persistAndFetch,
+    q,
+    range,
+    program,
+    type,
+    status,
+    orderNo,
+    receiptNo,
+    unpaidOnly,
+  ]);
 
   const resetFilters = useCallback(() => {
     setQ(DEFAULTS.q);
@@ -144,29 +303,54 @@ export default function Drafts() {
     setProgram(DEFAULTS.program);
     setType(DEFAULTS.type);
     setStatus(DEFAULTS.status);
-    setTx(DEFAULTS.tx);
+    setOrderNo(DEFAULTS.orderNo);
+    setReceiptNo(DEFAULTS.receiptNo);
+    setUnpaidOnly(DEFAULTS.unpaidOnly);
     persistAndFetch(DEFAULTS);
   }, [persistAndFetch]);
 
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this draft? (Allowed only when no paid/consumed payment)"))
+    if (
+      !window.confirm(
+        "Delete this issuance? (Allowed only while status is ISSUED and not yet paid)"
+      )
+    )
       return;
     try {
-      await dispatch(deleteDraft(id)).unwrap();
+      await dispatch(deleteIssue(id)).unwrap();
+      // If we just deleted the one shown in the details modal, close it
+      if (detailsIssue && detailsIssue._id === id) {
+        setShowDetails(false);
+        setDetailsIssue(null);
+      }
+      // refresh current list with same filters
+      applyFilters();
     } catch (e) {
-      alert(typeof e === "string" ? e : e?.message || "Failed to delete draft");
+      alert(
+        typeof e === "string" ? e : e?.message || "Failed to delete issuance"
+      );
     }
+  };
+
+  const openDetails = (issue) => {
+    setDetailsIssue(issue);
+    setShowDetails(true);
+  };
+
+  const closeDetails = () => {
+    setShowDetails(false);
+    setDetailsIssue(null);
   };
 
   return (
     <section className="container py-4">
       {/* header */}
       <div className="d-flex align-items-center justify-content-between mb-3">
-        <h1 className="h4 mb-0">Draft Registry</h1>
+        <h1 className="h4 mb-0">Draft Issuances</h1>
         <div className="d-flex gap-2">
-          <Button as={NavLink} to="/vc/sub/createDrafts" variant="success">
+          <Button as={NavLink} to="/vc/issue" variant="success">
             <FaPlus className="me-2" />
-            Create Drafts
+            Issue New Credentials
           </Button>
           <Button variant="outline-primary" onClick={applyFilters}>
             <FaSync className="me-2" />
@@ -174,6 +358,13 @@ export default function Drafts() {
           </Button>
         </div>
       </div>
+
+      {/* global error from listing */}
+      {isError && message && (
+        <Alert variant="danger" className="mb-3">
+          {String(message)}
+        </Alert>
+      )}
 
       {/* toolbar */}
       <Card className="mb-3">
@@ -198,7 +389,11 @@ export default function Drafts() {
                 <Button type="submit" variant="primary">
                   Apply
                 </Button>
-                <Button type="button" variant="outline-secondary" onClick={resetFilters}>
+                <Button
+                  type="button"
+                  variant="outline-secondary"
+                  onClick={resetFilters}
+                >
                   Reset
                 </Button>
                 <Button
@@ -213,7 +408,7 @@ export default function Drafts() {
             </Form>
 
             {/* badges */}
-            <div className="ms-auto d-flex gap-2 flex-wrap">
+            <div className="ms-auto d-flex gap-2 flex-wrap mt-2 mt-md-0">
               <Badge bg="light" text="dark">
                 Range: {range}
               </Badge>
@@ -226,9 +421,19 @@ export default function Drafts() {
               <Badge bg="light" text="dark">
                 Status: {status}
               </Badge>
-              {tx ? (
+              {orderNo ? (
                 <Badge bg="light" text="dark">
-                  TX: {tx}
+                  Order#: {orderNo}
+                </Badge>
+              ) : null}
+              {receiptNo ? (
+                <Badge bg="light" text="dark">
+                  Receipt#: {receiptNo}
+                </Badge>
+              ) : null}
+              {unpaidOnly ? (
+                <Badge bg="warning" text="dark">
+                  Unpaid only
                 </Badge>
               ) : null}
             </div>
@@ -243,34 +448,37 @@ export default function Drafts() {
             <Table hover className="align-middle mb-0">
               <thead className="table-light">
                 <tr>
-                  <th>Created</th>
                   <th>Student</th>
                   <th>Program</th>
                   <th>Type</th>
                   <th>Purpose</th>
-                  <th>Status</th>
-                  <th>Expiration</th>
-                  <th style={{ width: 90 }}>TX</th>
-                  <th style={{ width: 70 }}>Actions</th>
+                  <th style={{ width: 80 }} className="text-end">
+                    Issued
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {isLoadingList ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-5">
+                    <td colSpan={5} className="text-center py-5">
                       <Spinner animation="border" className="me-2" />
-                      Loading drafts…
+                      Loading issues…
                     </td>
                   </tr>
                 ) : rows.length ? (
-                  rows.map((d) => {
+                  pageRows.map((d) => {
                     const s = d?.student || {};
-                    const txNo = getTxFromDraft(d);
+                    const fullName =
+                      s.fullName ||
+                      `${s.lastName || ""}, ${s.firstName || ""}${
+                        s.middleName ? " " + s.middleName : ""
+                      }`.trim() ||
+                      "—";
+
                     return (
                       <tr key={d._id}>
-                        <td>{fmtDateTime(d?.createdAt)}</td>
                         <td>
-                          <div className="fw-semibold">{s.fullName || "—"}</div>
+                          <div className="fw-semibold">{fullName}</div>
                           <div className="small text-muted">
                             {s.studentNumber ? `#${s.studentNumber}` : "—"}
                           </div>
@@ -278,36 +486,14 @@ export default function Drafts() {
                         <td>{s.program || d.program || "—"}</td>
                         <td>{d.type || "—"}</td>
                         <td>{d.purpose || "—"}</td>
-                        <td>
-                          <Badge bg={statusBadgeVariant(d.status)}>{d.status || "draft"}</Badge>
-                        </td>
-                        <td>{fmtDate(d?.expiration)}</td>
-                        <td>
-                          {txNo ? (
-                            <Button
-                              size="sm"
-                              variant="outline-secondary"
-                              title="View transaction ID"
-                              onClick={() => {
-                                setTxNoToShow(txNo);
-                                setShowTx(true);
-                              }}
-                            >
-                              <FaEye className="me-1" />
-                              View
-                            </Button>
-                          ) : (
-                            <span className="text-muted">—</span>
-                          )}
-                        </td>
-                        <td>
+                        <td className="text-end">
                           <Button
                             size="sm"
-                            variant="outline-danger"
-                            onClick={() => handleDelete(d._id)}
-                            title="Delete draft"
+                            variant="outline-secondary"
+                            title="View issuance details"
+                            onClick={() => openDetails(d)}
                           >
-                            <FaTrash />
+                            <FaEye />
                           </Button>
                         </td>
                       </tr>
@@ -315,9 +501,9 @@ export default function Drafts() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={9} className="text-center py-4">
-                      No drafts found. Try adjusting filters (Status defaults to Draft; Range
-                      defaults to last 1 month).
+                    <td colSpan={5} className="text-center py-4">
+                      No issues found. Try adjusting filters (Status defaults
+                      to <strong>issued</strong> and “Unpaid only” is enabled).
                     </td>
                   </tr>
                 )}
@@ -325,18 +511,82 @@ export default function Drafts() {
             </Table>
           </div>
         </Card.Body>
+
+        {/* pagination footer */}
+        <Card.Footer className="d-flex align-items-center justify-content-between">
+          <div className="text-muted small">
+            Page {page} of {pageCount}
+            {total ? ` • Total ${total}` : ""}
+          </div>
+          <div className="d-flex gap-2">
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage(1)}
+              disabled={page <= 1 || isLoadingList}
+            >
+              « First
+            </Button>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1 || isLoadingList}
+            >
+              ‹ Prev
+            </Button>
+            <Form.Select
+              size="sm"
+              style={{ width: 90 }}
+              value={limit}
+              onChange={(e) => {
+                setLimit(Number(e.target.value));
+                setPage(1);
+              }}
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n}/page
+                </option>
+              ))}
+            </Form.Select>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={page >= pageCount || isLoadingList}
+            >
+              Next ›
+            </Button>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage(pageCount)}
+              disabled={page >= pageCount || isLoadingList}
+            >
+              Last »
+            </Button>
+          </div>
+        </Card.Footer>
       </Card>
 
       {/* filter settings */}
-      <Modal show={showSettings} onHide={() => setShowSettings(false)} centered>
+      <Modal
+        show={showSettings}
+        onHide={() => setShowSettings(false)}
+        centered
+      >
         <Modal.Header closeButton>
-          <Modal.Title>Draft Filters</Modal.Title>
+          <Modal.Title>Issue Filters</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form className="d-grid gap-3">
             <div>
               <Form.Label>Range</Form.Label>
-              <Form.Select value={range} onChange={(e) => setRange(e.target.value)}>
+              <Form.Select
+                value={range}
+                onChange={(e) => setRange(e.target.value)}
+              >
                 <option value="All">All</option>
                 <option value="today">Today</option>
                 <option value="1w">1 week</option>
@@ -347,19 +597,27 @@ export default function Drafts() {
 
             <div>
               <Form.Label>Program</Form.Label>
-              <Form.Select value={program} onChange={(e) => setProgram(e.target.value)}>
+              <Form.Select
+                value={program}
+                onChange={(e) => setProgram(e.target.value)}
+              >
                 {programOptions.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
                 ))}
               </Form.Select>
-              <Form.Text className="text-muted">Derived from loaded drafts.</Form.Text>
+              <Form.Text className="text-muted">
+                Derived from loaded issues.
+              </Form.Text>
             </div>
 
             <div>
               <Form.Label>Type</Form.Label>
-              <Form.Select value={type} onChange={(e) => setType(e.target.value)}>
+              <Form.Select
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+              >
                 <option value="All">All</option>
                 <option value="diploma">Diploma</option>
                 <option value="tor">TOR</option>
@@ -368,28 +626,58 @@ export default function Drafts() {
 
             <div>
               <Form.Label>Status</Form.Label>
-              <Form.Select value={status} onChange={(e) => setStatus(e.target.value)}>
-                <option value="draft">Draft</option>
+              <Form.Select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="issued">Issued</option>
                 <option value="signed">Signed</option>
                 <option value="anchored">Anchored</option>
+                <option value="void">Void</option>
                 <option value="All">All</option>
               </Form.Select>
-              <Form.Text className="text-muted">Defaults to Draft.</Form.Text>
+              <Form.Text className="text-muted">
+                Defaults to <strong>Issued</strong>.
+              </Form.Text>
             </div>
 
             <div>
-              <Form.Label>Transaction ID</Form.Label>
+              <Form.Label>Order No.</Form.Label>
               <Form.Control
-                placeholder="Exact client_tx or payment tx (optional)"
-                value={tx}
-                onChange={(e) => setTx(e.target.value.replace(/\s/g, ""))}
+                placeholder="Exact order number (optional)"
+                value={orderNo}
+                onChange={(e) => setOrderNo(e.target.value.trim())}
               />
-              <Form.Text className="text-muted">Leave empty to show all.</Form.Text>
+            </div>
+
+            <div>
+              <Form.Label>Receipt No.</Form.Label>
+              <Form.Control
+                placeholder="Exact receipt number (optional)"
+                value={receiptNo}
+                onChange={(e) => setReceiptNo(e.target.value.trim())}
+              />
+              <Form.Text className="text-muted">
+                Leave empty to ignore this filter.
+              </Form.Text>
+            </div>
+
+            <div>
+              <Form.Check
+                type="switch"
+                id="unpaid-only-switch"
+                label="Unpaid only (no receipt yet)"
+                checked={unpaidOnly}
+                onChange={(e) => setUnpaidOnly(e.target.checked)}
+              />
             </div>
           </Form>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="outline-secondary" onClick={() => setShowSettings(false)}>
+          <Button
+            variant="outline-secondary"
+            onClick={() => setShowSettings(false)}
+          >
             Close
           </Button>
           <Button
@@ -404,8 +692,13 @@ export default function Drafts() {
         </Modal.Footer>
       </Modal>
 
-      {/* tx modal */}
-      <TxViewerModal show={showTx} txNo={txNoToShow} onHide={() => setShowTx(false)} />
+      {/* details modal */}
+      <IssueDetailsModal
+        show={showDetails}
+        issue={detailsIssue}
+        onHide={closeDetails}
+        onDelete={(issue) => handleDelete(issue._id)}
+      />
     </section>
   );
 }

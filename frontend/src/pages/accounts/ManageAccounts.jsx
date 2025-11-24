@@ -8,7 +8,7 @@ import { FaSearch, FaCog, FaEdit, FaPlus, FaSync, FaUserPlus, FaEye } from 'reac
 import { fetchAccounts, createAccount, updateAccount } from '../../features/accounts/accountSlice';
 import { NavLink } from "react-router-dom";
 
-const ROLES = ['admin', 'superadmin', 'developer'];
+const ROLES = ['admin', 'superadmin', 'developer', 'cashier'];
 
 export default function ManageAccounts() {
   const dispatch = useDispatch();

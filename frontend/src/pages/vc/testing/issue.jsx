@@ -27,10 +27,7 @@ import {
 import * as XLSX from "xlsx";
 import { API_URL } from "../../../../config";
 import { issueCredentials as issueCredentialsThunk } from "../../../features/issuance/issueSlice";
-import {
-  getPassingStudents,
-  getStudentTor,
-} from "../../../features/student/studentSlice";
+import { getPassingStudents, getStudentTor, getStudentById } from "../../../features/student/studentSlice";
 
 /* ----------------------------- helpers ----------------------------- */
 const normalizeType = (value = "") => {
@@ -533,7 +530,7 @@ function IssueSuccessModal({ show, stats, onClose }) {
           className="d-inline-flex align-items-center justify-content-center rounded-circle mb-3"
           style={{ width: 64, height: 64, backgroundColor: "#e8f9f0" }}
         >
-          <FaCheckCircle size={32} color="#28a745" />
+          <FaCheckCircle size={32} />
         </div>
 
         <h5 className="mb-2">{heading}</h5>
@@ -570,9 +567,8 @@ function IssueSuccessModal({ show, stats, onClose }) {
 // 🔎 Student details (with on-demand TOR loading for DB students)
 function RecipientDetailsModal({ show, onHide, recipient }) {
   const dispatch = useDispatch();
-  const { tor, isLoadingTor, isError, message } = useSelector(
-    (s) => s.student || {}
-  );
+  const { tor, isLoadingTor, isError, message, student: studentDetail } =
+    useSelector((s) => s.student || {});
   const [tab, setTab] = useState("student");
 
   useEffect(() => {
@@ -592,9 +588,22 @@ function RecipientDetailsModal({ show, onHide, recipient }) {
     }
   }, [show, recipient, dispatch]);
 
+  // fetch FULL student detail when needed (names, dateAdmission, etc.)
+  useEffect(() => {
+    if (!show || !recipient) return;
+    const studentId = recipient.studentData?._id;
+    if (studentId) dispatch(getStudentById(studentId));
+  }, [show, recipient, dispatch]);
+
   if (!recipient) return null;
 
-  const s = recipient.studentData || {};
+  // prefer fresh detail from store (must match the id of this recipient)
+  const s =
+    studentDetail &&
+    recipient.studentData &&
+    studentDetail._id === recipient.studentData._id
+      ? studentDetail
+      : recipient.studentData || {};
   const grades =
     recipient.grades && recipient.grades.length ? recipient.grades : tor || [];
 
@@ -663,7 +672,7 @@ function RecipientDetailsModal({ show, onHide, recipient }) {
             </Col>
             <Col md={6}>
               <Form.Label>Date admitted</Form.Label>
-              <Form.Control value={s.dateAdmitted || ""} readOnly />
+              <Form.Control value={s.dateAdmission || s.dateAdmitted || ""} readOnly />
             </Col>
             <Col md={6}>
               <Form.Label>Date graduated</Form.Label>
@@ -728,7 +737,7 @@ function RecipientDetailsModal({ show, onHide, recipient }) {
                       <td>{g.yearLevel || "—"}</td>
                       <td>{g.semester || "—"}</td>
                       <td>{g.subjectCode || "—"}</td>
-                      <td>{g.subjectTitle || "—"}</td>
+                      <td>{g.subjectTitle || g.subjectDescription || "—"}</td>
                       <td>{g.units != null ? g.units : "—"}</td>
                       <td>{g.finalGrade != null ? g.finalGrade : "—"}</td>
                       <td>{g.remarks || "—"}</td>
@@ -800,12 +809,18 @@ function AddFromRegistryModal({ show, onHide, onAdd }) {
     return ["All", ...fromStudents];
   }, [allPrograms, students]);
 
-  // When modal opens, fetch students (default filters)
+  // When modal opens, fetch students and RESET filters
   useEffect(() => {
     if (!show) return;
-    dispatch(getPassingStudents({}));
+    setQ("");
+    setProgram("All");
+    setGradYearMin("");
+    setProgramPending("All");
+    setYearSelectPending("");
+    setYearCustomPending("");
     setSelectedIds([]);
     setCurrentPage(1);
+    dispatch(getPassingStudents({}));
   }, [show, dispatch]);
 
   const applyServerFilters = useCallback(
@@ -1067,9 +1082,7 @@ function AddFromRegistryModal({ show, onHide, onAdd }) {
                           className={isChecked ? "table-success" : ""}
                           style={{ cursor: "pointer" }}
                           onClick={(e) => {
-                            if (
-                              e.target.closest("button, a, input, label")
-                            ) {
+                            if (e.target.closest("button, a, input, label")) {
                               return;
                             }
                             toggleSelected(stu._id);
@@ -1115,15 +1128,11 @@ function AddFromRegistryModal({ show, onHide, onAdd }) {
                 <nav aria-label="Page navigation">
                   <ul className="pagination mb-0">
                     <li
-                      className={`page-item ${
-                        currentPage === 1 ? "disabled" : ""
-                      }`}
+                      className={`page-item ${currentPage === 1 ? "disabled" : ""}`}
                     >
                       <button
                         className="page-link"
-                        onClick={() =>
-                          setCurrentPage((p) => Math.max(p - 1, 1))
-                        }
+                        onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
                       >
                         &laquo;
                       </button>
@@ -1131,9 +1140,7 @@ function AddFromRegistryModal({ show, onHide, onAdd }) {
                     {Array.from({ length: totalPages }, (_, i) => (
                       <li
                         key={i + 1}
-                        className={`page-item ${
-                          currentPage === i + 1 ? "active" : ""
-                        }`}
+                        className={`page-item ${currentPage === i + 1 ? "active" : ""}`}
                       >
                         <button
                           className="page-link"
@@ -1144,16 +1151,12 @@ function AddFromRegistryModal({ show, onHide, onAdd }) {
                       </li>
                     ))}
                     <li
-                      className={`page-item ${
-                        currentPage === totalPages ? "disabled" : ""
-                      }`}
+                      className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}
                     >
                       <button
                         className="page-link"
                         onClick={() =>
-                          setCurrentPage((p) =>
-                            Math.min(p + 1, totalPages)
-                          )
+                          setCurrentPage((p) => Math.min(p + 1, totalPages))
                         }
                       >
                         &raquo;
@@ -1478,6 +1481,7 @@ export default function IssueCredentials() {
             program: old.program || program,
             dateGraduated: old.dateGraduated || dateGraduated,
             studentData: stu,
+            studentId: old.studentId || stu._id, // keep/link DB _id
           };
           const idx = next.findIndex((x) => x.tempId === old.tempId);
           if (idx >= 0) next[idx] = merged;
@@ -1489,6 +1493,7 @@ export default function IssueCredentials() {
             dateGraduated,
             program,
             studentData: stu,
+            studentId: stu._id, // store DB _id for issuing payload
             grades: [],
             isEditing: false,
           });
@@ -1526,207 +1531,151 @@ export default function IssueCredentials() {
   };
 
   const actuallyIssue = async () => {
-  const exp = computeExpiration();
-  const rawPurpose = purpose === "other" ? otherPurpose : purpose;
-  const normalizedPurpose = normalizePurpose(rawPurpose);
+    const exp = computeExpiration();
+    const rawPurpose = purpose === "other" ? otherPurpose : purpose;
+    const normalizedPurpose = normalizePurpose(rawPurpose);
 
-  // minimal per-recipient data for the backend
-  const recipientsPayload = recipients
-    .filter((r) => r.studentNumber && r.studentNumber.trim() !== "")
-    .map((r) => ({
-      studentNumber: r.studentNumber.trim(),
-      fullName: r.fullName || "",
-      program: r.program || "",
-      dateGraduated: r.dateGraduated || "",
-    }));
+    // minimal per-recipient data for the backend
+    const recipientsPayload = recipients
+      .filter((r) => r.studentNumber && r.studentNumber.trim() !== "")
+      .map((r) => ({
+        studentId: r.studentId || r.studentData?._id || undefined,
+        studentNumber: r.studentNumber.trim(),
+        fullName: r.fullName || "",
+        program: r.program || "",
+        dateGraduated: r.dateGraduated || "",
+      }));
 
-  if (!recipientsPayload.length) {
-    alert("All recipients are missing student numbers.");
-    return;
-  }
+    if (!recipientsPayload.length) {
+      alert("All recipients are missing student numbers.");
+      return;
+    }
 
-  // spreadsheet-style rows so the backend can seed StudentData + Grade
-  const studentDataRows = recipients
-    .map((r) => r.studentData)
-    .filter(Boolean);
+    // spreadsheet-style rows so the backend can upsert only when requested
+    const studentDataRows = importPreview.shouldSeedDb
+      ? recipients.map((r) => r.studentData).filter(Boolean)
+      : [];
+    const gradeRows = importPreview.shouldSeedDb
+      ? recipients.flatMap((r) => r.grades || [])
+      : [];
 
-  const gradeRows = recipients.flatMap((r) => r.grades || []);
+    const payload = {
+      templateId,
+      type: vcType, // "tor" | "diploma"
+      purpose: normalizedPurpose,
+      expiration: exp || "N/A",
+      anchorNow: !!anchorNow,
+      recipients: recipientsPayload,
+      studentDataRows,
+      gradeRows,
+      seedDb: importPreview.shouldSeedDb === true,
+    };
 
-  const shouldSeedDb = importPreview.shouldSeedDb === true;
+    const totalRequested = recipientsPayload.length;
 
-  const payload = {
-    templateId,
-    type: vcType, // "tor" | "diploma"
-    purpose: normalizedPurpose,
-    expiration: exp || "N/A",
-    anchorNow: !!anchorNow,
-    recipients: recipientsPayload,
-    studentDataRows,
-    gradeRows,
-    seedDb: shouldSeedDb,
+    setProgress({ current: 0, total: totalRequested });
+    setShowProgress(true);
+
+    try {
+      const result = await dispatch(issueCredentialsThunk(payload)).unwrap();
+
+      setProgress({
+        current: totalRequested,
+        total: totalRequested,
+      });
+
+      // --------- derive stats safely ---------
+      let createdCount = totalRequested;
+      let duplicateCount = 0;
+      let errorCount = 0;
+
+      const clampInt = (n) =>
+        Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+
+      if (result && typeof result === "object") {
+        if (typeof result.createdCount === "number") {
+          createdCount = result.createdCount;
+        } else if (Array.isArray(result.created)) {
+          createdCount = result.created.length;
+        }
+
+        if (typeof result.duplicateCount === "number") {
+          duplicateCount = result.duplicateCount;
+        } else if (Array.isArray(result.duplicates)) {
+          duplicateCount = result.duplicates.length;
+        }
+
+        if (typeof result.errorCount === "number") {
+          errorCount = result.errorCount;
+        } else if (Array.isArray(result.errors)) {
+          errorCount = result.errors.length;
+        }
+      }
+
+      createdCount = clampInt(createdCount);
+      duplicateCount = clampInt(duplicateCount);
+      errorCount = clampInt(errorCount);
+
+      let sum = createdCount + duplicateCount + errorCount;
+
+      if (sum === 0) {
+        createdCount = totalRequested;
+        duplicateCount = 0;
+        errorCount = 0;
+      } else if (
+        createdCount === 0 &&
+        duplicateCount === 0 &&
+        errorCount === totalRequested
+      ) {
+        createdCount = totalRequested;
+        errorCount = 0;
+      } else if (sum > totalRequested) {
+        const overflow = sum - totalRequested;
+        errorCount = clampInt(errorCount - overflow);
+      } else if (sum < totalRequested) {
+        createdCount += totalRequested - sum;
+      }
+
+      setSuccessStats({
+        created: createdCount,
+        duplicates: duplicateCount,
+        errors: errorCount,
+        totalRequested,
+      });
+
+      // ✅ Clear recipients table after a successful issuance
+      setRecipients([]);
+
+      // Clear import preview (so next import is fresh)
+      setImportPreview({
+        studentRows: [],
+        gradeRows: [],
+        recipients: [],
+        shouldSeedDb: false,
+      });
+
+      // Optionally refresh DB list so newly seeded students are visible
+      if (importPreview.shouldSeedDb) {
+        dispatch(getPassingStudents({}));
+      }
+
+      setShowSuccess(true);
+    } catch (err) {
+      alert(
+        typeof err === "string"
+          ? err
+          : err?.message || "Failed to issue credentials."
+      );
+    } finally {
+      setTimeout(() => setShowProgress(false), 400);
+    }
   };
 
-  const totalRequested = recipientsPayload.length;
-
-  setProgress({ current: 0, total: totalRequested });
-  setShowProgress(true);
-
-  try {
-    const result = await dispatch(issueCredentialsThunk(payload)).unwrap();
-
-    setProgress({
-      current: totalRequested,
-      total: totalRequested,
-    });
-
-    // ---- derive stats safely (no optimistic fallback) -------------------
-    let createdCount = 0;
-    let duplicateCount = 0;
-    let errorCount = 0;
-
-    let hasCreated = false;
-    let hasDuplicates = false;
-    let hasErrors = false;
-
-    if (result && typeof result === "object") {
-      // created / success
-      if (typeof result.createdCount === "number") {
-        createdCount = result.createdCount;
-        hasCreated = true;
-      }
-      if (typeof result.successCount === "number") {
-        createdCount = result.successCount;
-        hasCreated = true;
-      }
-      if (typeof result.issuedCount === "number") {
-        createdCount = result.issuedCount;
-        hasCreated = true;
-      }
-      if (typeof result.created === "number") {
-        createdCount = result.created;
-        hasCreated = true;
-      }
-      if (Array.isArray(result.created)) {
-        createdCount = result.created.length;
-        hasCreated = true;
-      }
-      if (Array.isArray(result.successes)) {
-        createdCount = result.successes.length;
-        hasCreated = true;
-      }
-
-      // duplicates / skipped
-      if (typeof result.duplicateCount === "number") {
-        duplicateCount = result.duplicateCount;
-        hasDuplicates = true;
-      }
-      if (typeof result.skippedCount === "number") {
-        duplicateCount = result.skippedCount;
-        hasDuplicates = true;
-      }
-      if (typeof result.duplicates === "number") {
-        duplicateCount = result.duplicates;
-        hasDuplicates = true;
-      }
-      if (Array.isArray(result.duplicates)) {
-        duplicateCount = result.duplicates.length;
-        hasDuplicates = true;
-      }
-
-      // errors / failed
-      if (typeof result.errorCount === "number") {
-        errorCount = result.errorCount;
-        hasErrors = true;
-      }
-      if (typeof result.failedCount === "number") {
-        errorCount = result.failedCount;
-        hasErrors = true;
-      }
-      if (typeof result.failCount === "number") {
-        errorCount = result.failCount;
-        hasErrors = true;
-      }
-      if (typeof result.errors === "number") {
-        errorCount = result.errors;
-        hasErrors = true;
-      }
-      if (Array.isArray(result.errors)) {
-        errorCount = result.errors.length;
-        hasErrors = true;
-      }
-    }
-
-    const clamp = (n) =>
-      Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
-
-    createdCount = clamp(createdCount);
-    duplicateCount = clamp(duplicateCount);
-    errorCount = clamp(errorCount);
-
-    // If backend didn't explicitly send errors but did send created/duplicates,
-    // treat the remaining as "failed" (pessimistic but not lying).
-    if (!hasErrors && (hasCreated || hasDuplicates)) {
-      const remaining = totalRequested - createdCount - duplicateCount;
-      errorCount = remaining > 0 ? remaining : 0;
-    }
-
-    // Make sure we never exceed totalRequested
-    let sum = createdCount + duplicateCount + errorCount;
-    if (sum > totalRequested) {
-      const overflow = sum - totalRequested;
-      const reduceFromErrors = Math.min(errorCount, overflow);
-      errorCount -= reduceFromErrors;
-      const still = overflow - reduceFromErrors;
-      if (still > 0) {
-        duplicateCount = Math.max(0, duplicateCount - still);
-      }
-    }
-
-    // If backend gave no usable stats at all, leave everything as 0
-    if (!hasCreated && !hasDuplicates && !hasErrors) {
-      createdCount = 0;
-      duplicateCount = 0;
-      errorCount = 0;
-    }
-
-    setSuccessStats({
-      created: createdCount,
-      duplicates: duplicateCount,
-      errors: errorCount,
-      totalRequested,
-    });
-    setShowSuccess(true);
-
-    // 🔹 Clear table + import preview after successful issuance
-    setRecipients([]);
-    setImportPreview({
-      studentRows: [],
-      gradeRows: [],
-      recipients: [],
-      shouldSeedDb: false,
-    });
-
-    // 🔹 Only refresh DB list if we actually told backend to seed
-    if (shouldSeedDb) {
-      dispatch(getPassingStudents({}));
-    }
-  } catch (err) {
-    alert(
-      typeof err === "string"
-        ? err
-        : err?.message || "Failed to issue credentials."
-    );
-  } finally {
-    setTimeout(() => setShowProgress(false), 400);
-  }
-};
-
-const handleConfirmClose = (ok) => {
-  setShowConfirm(false);
-  if (!ok) return;
-  actuallyIssue();
-};
-
+  const handleConfirmClose = (ok) => {
+    setShowConfirm(false);
+    if (!ok) return;
+    actuallyIssue();
+  };
 
   /* ---------------------------------- UI ---------------------------------- */
 
@@ -1865,9 +1814,7 @@ const handleConfirmClose = (ok) => {
                         <div className="d-flex gap-1">
                           <Button
                             size="sm"
-                            variant={
-                              r.isEditing ? "primary" : "outline-primary"
-                            }
+                            variant={r.isEditing ? "primary" : "outline-primary"}
                             title={r.isEditing ? "Done editing" : "Edit row"}
                             onClick={() => toggleEditRow(r.tempId)}
                           >
@@ -1902,9 +1849,7 @@ const handleConfirmClose = (ok) => {
           <div className="d-flex justify-content-between align-items-center mt-3">
             <div className="text-muted small">
               {totalRecipients
-                ? `${totalRecipients} student${
-                    totalRecipients === 1 ? "" : "s"
-                  }`
+                ? `${totalRecipients} student${totalRecipients === 1 ? "" : "s"}`
                 : "No recipients yet"}
             </div>
             <div className="d-flex gap-2">

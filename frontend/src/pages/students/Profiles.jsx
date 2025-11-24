@@ -14,7 +14,15 @@ import {
   Modal,
   Alert,
 } from "react-bootstrap";
-import { FaSearch, FaSync, FaEye, FaUserPlus, FaCog, FaEdit, FaPlus } from "react-icons/fa";
+import {
+  FaSearch,
+  FaSync,
+  FaEye,
+  FaUserPlus,
+  FaCog,
+  FaEdit,
+  FaPlus,
+} from "react-icons/fa";
 import { NavLink } from "react-router-dom";
 import {
   getPassingStudents,
@@ -130,8 +138,17 @@ async function compressImageFile(
   }
 
   if (!finalBlob) {
-    const tinyCanvas = drawToCanvas(bitmap, Math.min(256, maxW), Math.min(256, maxH), 1);
-    finalBlob = await canvasToBlob(tinyCanvas, mime, Math.max(minQuality, 0.5));
+    const tinyCanvas = drawToCanvas(
+      bitmap,
+      Math.min(256, maxW),
+      Math.min(256, maxH),
+      1
+    );
+    finalBlob = await canvasToBlob(
+      tinyCanvas,
+      mime,
+      Math.max(minQuality, 0.5)
+    );
   }
 
   const dataUrl = await blobToDataUrl(finalBlob);
@@ -144,6 +161,7 @@ const DEFAULTS = {
   gradYearMin: "2025", // client-side ≥ filter default
   q: "",
 };
+const PAGE_SIZES = [10, 20, 50, 100];
 
 function toDateOnly(v) {
   if (!v) return "—";
@@ -188,7 +206,8 @@ function buildPatch(current, baseline) {
     // field-specific normalization
     if (key === "gender") cur = normalizeGender(cur);
     if (key === "gwa") cur = cur === "" ? undefined : Number(cur);
-    if (key === "dateAdmission" || key === "dateGraduated") cur = cur || undefined;
+    if (key === "dateAdmission" || key === "dateGraduated")
+      cur = cur || undefined;
 
     // do not send empties / undefined / null
     if (cur === "" || cur === undefined || cur === null) continue;
@@ -259,6 +278,13 @@ export default function StudentProfiles() {
   const [isCompressing, setIsCompressing] = useState(false);
   const [photoBytes, setPhotoBytes] = useState(0);
 
+  // pagination
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+
+  // ✅ SUCCESS MODAL STATE
+  const [showSuccess, setShowSuccess] = useState(false);
+
   const onPickEditImage = () => editInputRef.current?.click();
   const onEditImageChange = async (e) => {
     const f = e.target.files?.[0];
@@ -291,8 +317,9 @@ export default function StudentProfiles() {
 
       if (size > BYTES_LIMIT) {
         alert(
-          `Heads up: compressed image is still ${formatBytes(size)}. ` +
-            `Consider choosing a smaller image.`
+          `Heads up: compressed image is still ${formatBytes(
+            size
+          )}. Consider choosing a smaller image.`
         );
       }
     } catch (err) {
@@ -312,7 +339,9 @@ export default function StudentProfiles() {
   );
 
   const programOptions = useMemo(() => {
-    const fromSlice = Array.from(new Set((allPrograms || []).filter(Boolean))).sort();
+    const fromSlice = Array.from(
+      new Set((allPrograms || []).filter(Boolean))
+    ).sort();
     if (fromSlice.length) return ["All", ...fromSlice];
     const fromStudents = Array.from(
       new Set((students || []).map((s) => s.program).filter(Boolean))
@@ -334,7 +363,8 @@ export default function StudentProfiles() {
     const initProgram =
       typeof saved.programs === "string" ? saved.programs : DEFAULTS.program;
     const initGradMin =
-      typeof saved.gradYearMin === "string" || typeof saved.gradYearMin === "number"
+      typeof saved.gradYearMin === "string" ||
+      typeof saved.gradYearMin === "number"
         ? String(saved.gradYearMin)
         : DEFAULTS.gradYearMin;
 
@@ -359,7 +389,9 @@ export default function StudentProfiles() {
 
     const serverFilters = {
       ...(initQ ? { q: initQ } : {}),
-      ...(initProgram && initProgram !== "All" ? { programs: initProgram } : {}),
+      ...(initProgram && initProgram !== "All"
+        ? { programs: initProgram }
+        : {}),
     };
     dispatch(getPassingStudents(serverFilters));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -368,7 +400,9 @@ export default function StudentProfiles() {
   const buildServerFilters = useCallback(
     (programValue, qValue) => ({
       ...(qValue ? { q: qValue } : {}),
-      ...(programValue && programValue !== "All" ? { programs: programValue } : {}),
+      ...(programValue && programValue !== "All"
+        ? { programs: programValue }
+        : {}),
     }),
     []
   );
@@ -388,6 +422,7 @@ export default function StudentProfiles() {
     const serverFilters = buildServerFilters(program, q);
     persistFilters(serverFilters, gradYearMin);
     dispatch(getPassingStudents(serverFilters));
+    setPage(1);
   }, [buildServerFilters, dispatch, program, q, gradYearMin, persistFilters]);
 
   const resetAll = useCallback(() => {
@@ -402,6 +437,7 @@ export default function StudentProfiles() {
     const serverFilters = buildServerFilters(DEFAULTS.program, DEFAULTS.q);
     persistFilters(serverFilters, DEFAULTS.gradYearMin);
     dispatch(getPassingStudents(serverFilters));
+    setPage(1);
   }, [buildServerFilters, dispatch, persistFilters]);
 
   const applyModalFilters = useCallback(() => {
@@ -420,6 +456,7 @@ export default function StudentProfiles() {
     persistFilters(serverFilters, resolvedYear || "");
     dispatch(getPassingStudents(serverFilters));
     setShowFilterSettings(false);
+    setPage(1);
   }, [
     buildServerFilters,
     programPending,
@@ -437,7 +474,9 @@ export default function StudentProfiles() {
     const needle = q.trim().toLowerCase();
     if (needle) {
       list = list.filter((s) => {
-        const hay = `${s.fullName || ""} ${s.studentNumber || ""} ${s.program || ""}`.toLowerCase();
+        const hay = `${s.fullName || ""} ${s.studentNumber || ""} ${
+          s.program || ""
+        }`.toLowerCase();
         return hay.includes(needle);
       });
     }
@@ -455,6 +494,26 @@ export default function StudentProfiles() {
 
     return list;
   }, [students, q, gradYearMin]);
+
+  // pagination derived
+  const total = filtered.length;
+  const pageCount = Math.max(
+    1,
+    Math.ceil(Math.max(0, total) / Math.max(1, limit))
+  );
+
+  const pageRows = useMemo(() => {
+    const start = (page - 1) * limit;
+    return filtered.slice(start, start + limit);
+  }, [filtered, page, limit]);
+
+  useEffect(() => {
+    const pc = Math.max(
+      1,
+      Math.ceil(Math.max(0, filtered.length) / Math.max(1, limit))
+    );
+    if (page > pc) setPage(pc);
+  }, [filtered.length, limit, page]);
 
   /* ---------- view modal ---------- */
   const openView = (id) => {
@@ -499,7 +558,13 @@ export default function StudentProfiles() {
 
   // Merge latest details into the form; if the user hasn't edited yet, also update baseline
   useEffect(() => {
-    if (!showEdit || !studentDetail || !selectedId || studentDetail._id !== selectedId) return;
+    if (
+      !showEdit ||
+      !studentDetail ||
+      !selectedId ||
+      studentDetail._id !== selectedId
+    )
+      return;
 
     const merged = {
       fullName: studentDetail.fullName || "",
@@ -522,7 +587,10 @@ export default function StudentProfiles() {
       JSON.stringify(editForm) !== JSON.stringify(initialEditRef.current || {});
     setEditForm((prev) => ({ ...prev, ...merged }));
     if (!unsaved) {
-      initialEditRef.current = { ...(initialEditRef.current || {}), ...merged };
+      initialEditRef.current = {
+        ...(initialEditRef.current || {}),
+        ...merged,
+      };
     }
 
     if (studentDetail.photoUrl) setEditImgPreview(studentDetail.photoUrl);
@@ -559,6 +627,7 @@ export default function StudentProfiles() {
       await dispatch(updateStudent({ id: selectedId, data: patch })).unwrap();
       setShowEdit(false);
       setSelectedId(null);
+      setShowSuccess(true); // ✅ show success modal
       dispatch(getPassingStudents(buildServerFilters(program, q)));
     } catch (err) {
       alert(err || "Failed to update student");
@@ -572,13 +641,17 @@ export default function StudentProfiles() {
       <div className="d-flex align-items-center justify-content-between mb-3">
         <div className="d-flex align-items-center gap-2">
           <h1 className="h4 mb-0">Student Profiles</h1>
-          <Badge bg="secondary" className="ms-1">Passing ≤ 3.0</Badge>
+          <Badge bg="secondary" className="ms-1">
+            Passing ≤ 3.0
+          </Badge>
         </div>
 
         <div className="d-flex gap-2">
           <Button
             variant="outline-primary"
-            onClick={() => dispatch(getPassingStudents(buildServerFilters(program, q)))}
+            onClick={() =>
+              dispatch(getPassingStudents(buildServerFilters(program, q)))
+            }
           >
             <FaSync className="me-2" />
             Refresh
@@ -608,14 +681,22 @@ export default function StudentProfiles() {
             }}
           >
             <InputGroup className="flex-nowrap">
-              <InputGroup.Text><FaSearch /></InputGroup.Text>
+              <InputGroup.Text>
+                <FaSearch />
+              </InputGroup.Text>
               <Form.Control
                 placeholder="Search by name, student no., or program…"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
               />
-              <Button type="submit" variant="primary">Apply</Button>
-              <Button type="button" variant="outline-secondary" onClick={resetAll}>
+              <Button type="submit" variant="primary">
+                Apply
+              </Button>
+              <Button
+                type="button"
+                variant="outline-secondary"
+                onClick={resetAll}
+              >
                 Reset
               </Button>
               <Button
@@ -630,16 +711,28 @@ export default function StudentProfiles() {
           </Form>
 
           <div className="mt-2 d-flex flex-wrap gap-2">
-            {q ? <Badge bg="light" text="dark">q: {q}</Badge> : null}
+            {q ? (
+              <Badge bg="light" text="dark">
+                q: {q}
+              </Badge>
+            ) : null}
             {program && program !== "All" ? (
-              <Badge bg="light" text="dark">Program: {program}</Badge>
+              <Badge bg="light" text="dark">
+                Program: {program}
+              </Badge>
             ) : (
-              <Badge bg="light" text="dark">Program: All</Badge>
+              <Badge bg="light" text="dark">
+                Program: All
+              </Badge>
             )}
             {gradYearMin ? (
-              <Badge bg="light" text="dark">Grad ≥ {gradYearMin}</Badge>
+              <Badge bg="light" text="dark">
+                Grad ≥ {gradYearMin}
+              </Badge>
             ) : (
-              <Badge bg="light" text="dark">Grad: Any</Badge>
+              <Badge bg="light" text="dark">
+                Grad: Any
+              </Badge>
             )}
             <Badge bg="secondary">Rows: {filtered.length}</Badge>
           </div>
@@ -647,11 +740,15 @@ export default function StudentProfiles() {
       </Card>
 
       {/* Errors */}
-      {isError && message ? <Alert variant="danger">{String(message)}</Alert> : null}
+      {isError && message ? (
+        <Alert variant="danger">{String(message)}</Alert>
+      ) : null}
 
       {/* Table */}
       <Card>
-        <Card.Header className="bg-light"><strong>Students</strong></Card.Header>
+        <Card.Header className="bg-light">
+          <strong>Students</strong>
+        </Card.Header>
         <Card.Body className="p-0">
           <div className="table-responsive">
             <Table hover className="align-middle mb-0">
@@ -675,14 +772,19 @@ export default function StudentProfiles() {
                     </td>
                   </tr>
                 ) : filtered.length ? (
-                  filtered.map((s) => (
+                  pageRows.map((s) => (
                     <tr key={s._id}>
                       <td>
                         {s.photoUrl ? (
                           <img
                             src={s.photoUrl}
                             alt=""
-                            style={{ width: 42, height: 42, objectFit: "cover", borderRadius: 6 }}
+                            style={{
+                              width: 42,
+                              height: 42,
+                              objectFit: "cover",
+                              borderRadius: 6,
+                            }}
                           />
                         ) : (
                           <div className="text-muted small">—</div>
@@ -691,7 +793,9 @@ export default function StudentProfiles() {
                       <td>{s.fullName || "—"}</td>
                       <td>{s.studentNumber || "—"}</td>
                       <td>{s.program || "—"}</td>
-                      <td>{s.gwa !== undefined && s.gwa !== null ? s.gwa : "—"}</td>
+                      <td>
+                        {s.gwa !== undefined && s.gwa !== null ? s.gwa : "—"}
+                      </td>
                       <td>{toDateOnly(s.dateGraduated)}</td>
                       <td>
                         <div className="d-flex align-items-center gap-1">
@@ -719,21 +823,82 @@ export default function StudentProfiles() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7} className="text-center py-4">No students found.</td>
+                    <td colSpan={7} className="text-center py-4">
+                      No students found.
+                    </td>
                   </tr>
                 )}
               </tbody>
             </Table>
           </div>
         </Card.Body>
+        <Card.Footer className="d-flex align-items-center justify-content-between">
+          <div className="text-muted small">
+            Page {page} of {pageCount}
+            {total ? ` • Total ${total}` : ""}
+          </div>
+          <div className="d-flex gap-2">
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+            >
+              « First
+            </Button>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
+              ‹ Prev
+            </Button>
+            <Form.Select
+              size="sm"
+              style={{ width: 90 }}
+              value={limit}
+              onChange={(e) => {
+                setLimit(Number(e.target.value));
+                setPage(1);
+              }}
+            >
+              {PAGE_SIZES.map((n) => (
+                <option key={n} value={n}>
+                  {n}/page
+                </option>
+              ))}
+            </Form.Select>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={page >= pageCount}
+            >
+              Next ›
+            </Button>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage(pageCount)}
+              disabled={page >= pageCount}
+            >
+              Last »
+            </Button>
+          </div>
+        </Card.Footer>
       </Card>
 
       {/* View Student Modal */}
       <Modal show={showView} onHide={closeView} centered size="lg">
-        <Modal.Header closeButton><Modal.Title>View Student</Modal.Title></Modal.Header>
+        <Modal.Header closeButton>
+          <Modal.Title>View Student</Modal.Title>
+        </Modal.Header>
         <Modal.Body>
           {isLoadingDetail ? (
-            <div className="text-center py-4"><Spinner animation="border" /></div>
+            <div className="text-center py-4">
+              <Spinner animation="border" />
+            </div>
           ) : !studentDetail ? (
             <div className="text-muted">No data.</div>
           ) : (
@@ -742,22 +907,38 @@ export default function StudentProfiles() {
                 <Row className="mb-3">
                   <Col md={8}>
                     <Form.Label>Full Name</Form.Label>
-                    <Form.Control value={studentDetail.fullName || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.fullName || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                   <Col md={4}>
                     <Form.Label>Student No.</Form.Label>
-                    <Form.Control value={studentDetail.studentNumber || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.studentNumber || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
                 <Row className="mb-3">
                   <Col md={6}>
                     <Form.Label>Program</Form.Label>
-                    <Form.Control value={studentDetail.program || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.program || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                   <Col md={6}>
                     <Form.Label>Major</Form.Label>
-                    <Form.Control value={studentDetail.major || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.major || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
@@ -766,7 +947,6 @@ export default function StudentProfiles() {
                     <Form.Label>Curriculum</Form.Label>
                     <Form.Control
                       value={
-                        // protect against [object Object]
                         typeof studentDetail.curriculum === "string"
                           ? studentDetail.curriculum
                           : studentDetail.curriculum?._id || ""
@@ -777,36 +957,62 @@ export default function StudentProfiles() {
                   </Col>
                   <Col md={6}>
                     <Form.Label>Gender</Form.Label>
-                    <Form.Control value={studentDetail.gender || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.gender || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
                 <Row className="mb-3">
                   <Col md={12}>
                     <Form.Label>Address</Form.Label>
-                    <Form.Control as="textarea" rows={2} value={studentDetail.address || ""} disabled readOnly />
+                    <Form.Control
+                      as="textarea"
+                      rows={2}
+                      value={studentDetail.address || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
                 <Row className="mb-3">
                   <Col md={6}>
                     <Form.Label>Place of Birth</Form.Label>
-                    <Form.Control value={studentDetail.placeOfBirth || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.placeOfBirth || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                   <Col md={6}>
                     <Form.Label>High School</Form.Label>
-                    <Form.Control value={studentDetail.highSchool || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.highSchool || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
                 <Row className="mb-3">
                   <Col md={6}>
                     <Form.Label>Date Admission</Form.Label>
-                    <Form.Control value={toDateOnly(studentDetail.dateAdmission)} disabled readOnly />
+                    <Form.Control
+                      value={toDateOnly(studentDetail.dateAdmission)}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                   <Col md={6}>
                     <Form.Label>Date Graduated</Form.Label>
-                    <Form.Control value={toDateOnly(studentDetail.dateGraduated)} disabled readOnly />
+                    <Form.Control
+                      value={toDateOnly(studentDetail.dateGraduated)}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
@@ -815,27 +1021,42 @@ export default function StudentProfiles() {
                     <Form.Label>GWA</Form.Label>
                     <Form.Control
                       value={
-                        studentDetail.gwa !== undefined && studentDetail.gwa !== null
+                        studentDetail.gwa !== undefined &&
+                        studentDetail.gwa !== null
                           ? studentDetail.gwa
                           : ""
                       }
-                      disabled readOnly
+                      disabled
+                      readOnly
                     />
                   </Col>
                   <Col md={6}>
                     <Form.Label>Honor</Form.Label>
-                    <Form.Control value={studentDetail.honor || ""} disabled readOnly />
+                    <Form.Control
+                      value={studentDetail.honor || ""}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
               </Col>
 
               <Col md={4}>
-                <div className="border rounded d-flex flex-column align-items-center justify-content-center p-3" style={{ minHeight: 260 }}>
+                <div
+                  className="border rounded d-flex flex-column align-items-center justify-content-center p-3"
+                  style={{ minHeight: 260 }}
+                >
                   {studentDetail.photoUrl ? (
                     <img
                       src={studentDetail.photoUrl}
                       alt="Profile"
-                      style={{ width: 180, height: 180, objectFit: "cover", borderRadius: 8, border: "1px solid #eee" }}
+                      style={{
+                        width: 180,
+                        height: 180,
+                        objectFit: "cover",
+                        borderRadius: 8,
+                        border: "1px solid #eee",
+                      }}
                     />
                   ) : (
                     <div className="text-muted">No profile photo</div>
@@ -846,13 +1067,17 @@ export default function StudentProfiles() {
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={closeView}>Close</Button>
+          <Button variant="secondary" onClick={closeView}>
+            Close
+          </Button>
         </Modal.Footer>
       </Modal>
 
       {/* Edit Student Modal */}
       <Modal show={showEdit} onHide={tryCloseEdit} centered size="lg">
-        <Modal.Header closeButton><Modal.Title>Edit Student</Modal.Title></Modal.Header>
+        <Modal.Header closeButton>
+          <Modal.Title>Edit Student</Modal.Title>
+        </Modal.Header>
         <Modal.Body>
           <Form
             onSubmit={(e) => {
@@ -867,13 +1092,19 @@ export default function StudentProfiles() {
                     <Form.Label>Full Name</Form.Label>
                     <Form.Control
                       value={editForm.fullName}
-                      onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, fullName: e.target.value })
+                      }
                       required
                     />
                   </Col>
                   <Col md={4}>
                     <Form.Label>Student No.</Form.Label>
-                    <Form.Control value={editForm.studentNumber} disabled readOnly />
+                    <Form.Control
+                      value={editForm.studentNumber}
+                      disabled
+                      readOnly
+                    />
                   </Col>
                 </Row>
 
@@ -882,7 +1113,9 @@ export default function StudentProfiles() {
                     <Form.Label>Program</Form.Label>
                     <Form.Control
                       value={editForm.program}
-                      onChange={(e) => setEditForm({ ...editForm, program: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, program: e.target.value })
+                      }
                       placeholder="e.g., BSIT"
                     />
                   </Col>
@@ -890,7 +1123,9 @@ export default function StudentProfiles() {
                     <Form.Label>Major</Form.Label>
                     <Form.Control
                       value={editForm.major}
-                      onChange={(e) => setEditForm({ ...editForm, major: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, major: e.target.value })
+                      }
                       placeholder="optional"
                     />
                   </Col>
@@ -901,7 +1136,9 @@ export default function StudentProfiles() {
                     <Form.Label>Gender</Form.Label>
                     <Form.Select
                       value={editForm.gender}
-                      onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, gender: e.target.value })
+                      }
                     >
                       <option value="male">male</option>
                       <option value="female">female</option>
@@ -912,7 +1149,9 @@ export default function StudentProfiles() {
                     <Form.Label>Honor</Form.Label>
                     <Form.Control
                       value={editForm.honor}
-                      onChange={(e) => setEditForm({ ...editForm, honor: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, honor: e.target.value })
+                      }
                       placeholder="e.g., Cum Laude"
                     />
                   </Col>
@@ -925,7 +1164,9 @@ export default function StudentProfiles() {
                       as="textarea"
                       rows={2}
                       value={editForm.address}
-                      onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, address: e.target.value })
+                      }
                     />
                   </Col>
                 </Row>
@@ -935,7 +1176,12 @@ export default function StudentProfiles() {
                     <Form.Label>Place of Birth</Form.Label>
                     <Form.Control
                       value={editForm.placeOfBirth}
-                      onChange={(e) => setEditForm({ ...editForm, placeOfBirth: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          placeOfBirth: e.target.value,
+                        })
+                      }
                       placeholder="City, Province"
                     />
                   </Col>
@@ -943,7 +1189,12 @@ export default function StudentProfiles() {
                     <Form.Label>High School</Form.Label>
                     <Form.Control
                       value={editForm.highSchool}
-                      onChange={(e) => setEditForm({ ...editForm, highSchool: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          highSchool: e.target.value,
+                        })
+                      }
                     />
                   </Col>
                 </Row>
@@ -954,7 +1205,12 @@ export default function StudentProfiles() {
                     <Form.Control
                       type="date"
                       value={editForm.dateAdmission}
-                      onChange={(e) => setEditForm({ ...editForm, dateAdmission: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          dateAdmission: e.target.value,
+                        })
+                      }
                     />
                   </Col>
                   <Col md={6}>
@@ -962,7 +1218,12 @@ export default function StudentProfiles() {
                     <Form.Control
                       type="date"
                       value={editForm.dateGraduated}
-                      onChange={(e) => setEditForm({ ...editForm, dateGraduated: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          dateGraduated: e.target.value,
+                        })
+                      }
                     />
                   </Col>
                 </Row>
@@ -976,7 +1237,9 @@ export default function StudentProfiles() {
                       min="1.00"
                       max="5.00"
                       value={editForm.gwa}
-                      onChange={(e) => setEditForm({ ...editForm, gwa: e.target.value })}
+                      onChange={(e) =>
+                        setEditForm({ ...editForm, gwa: e.target.value })
+                      }
                       placeholder="e.g., 2.25"
                     />
                   </Col>
@@ -1004,11 +1267,18 @@ export default function StudentProfiles() {
                       <div className="small text-muted mt-2">
                         {isCompressing ? (
                           <>
-                            <Spinner animation="border" size="sm" className="me-2" />
+                            <Spinner
+                              animation="border"
+                              size="sm"
+                              className="me-2"
+                            />
                             Compressing…
                           </>
                         ) : photoBytes ? (
-                          <>Size: {formatBytes(photoBytes)} (≤ {formatBytes(BYTES_LIMIT)} target)</>
+                          <>
+                            Size: {formatBytes(photoBytes)} (≤{" "}
+                            {formatBytes(BYTES_LIMIT)} target)
+                          </>
                         ) : null}
                       </div>
                       <Button
@@ -1048,36 +1318,62 @@ export default function StudentProfiles() {
           </Form>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={tryCloseEdit}>Cancel</Button>
-          <Button variant="primary" onClick={submitEdit} disabled={isUpdating || isCompressing}>
-            {isUpdating || isCompressing ? <Spinner animation="border" size="sm" className="me-2" /> : null}
+          <Button variant="secondary" onClick={tryCloseEdit}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={submitEdit}
+            disabled={isUpdating || isCompressing}
+          >
+            {isUpdating || isCompressing ? (
+              <Spinner animation="border" size="sm" className="me-2" />
+            ) : null}
             Save Changes
           </Button>
         </Modal.Footer>
       </Modal>
 
       {/* Filter settings modal */}
-      <Modal show={showFilterSettings} onHide={() => setShowFilterSettings(false)} centered>
-        <Modal.Header closeButton><Modal.Title>Student Filters</Modal.Title></Modal.Header>
+      <Modal
+        show={showFilterSettings}
+        onHide={() => setShowFilterSettings(false)}
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Student Filters</Modal.Title>
+        </Modal.Header>
         <Modal.Body>
           <Form className="d-grid gap-3">
             <div>
               <Form.Label>Program</Form.Label>
-              <Form.Select value={programPending} onChange={(e) => setProgramPending(e.target.value)}>
+              <Form.Select
+                value={programPending}
+                onChange={(e) => setProgramPending(e.target.value)}
+              >
                 {programOptions.map((p) => (
-                  <option key={p} value={p}>{p}</option>
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
                 ))}
               </Form.Select>
-              <Form.Text className="text-muted">Programs are derived from currently loaded data.</Form.Text>
+              <Form.Text className="text-muted">
+                Programs are derived from currently loaded data.
+              </Form.Text>
             </div>
 
             <div>
               <Form.Label>Graduation Year (≥)</Form.Label>
-              <Form.Select value={yearSelectPending} onChange={(e) => setYearSelectPending(e.target.value)}>
+              <Form.Select
+                value={yearSelectPending}
+                onChange={(e) => setYearSelectPending(e.target.value)}
+              >
                 <option value="">(Any year)</option>
                 <optgroup label="Presets">
                   {quickYears.map((y) => (
-                    <option key={`q-${y}`} value={y}>{y}</option>
+                    <option key={`q-${y}`} value={y}>
+                      {y}
+                    </option>
                   ))}
                 </optgroup>
                 <optgroup label="Custom">
@@ -1094,7 +1390,11 @@ export default function StudentProfiles() {
                     max="2100"
                     placeholder="Type year, e.g. 2025"
                     value={yearCustomPending}
-                    onChange={(e) => setYearCustomPending(e.target.value.replace(/[^\d]/g, ""))}
+                    onChange={(e) =>
+                      setYearCustomPending(
+                        e.target.value.replace(/[^\d]/g, "")
+                      )
+                    }
                   />
                   <Form.Text className="text-muted">
                     Students who graduated in this year or later will be shown.
@@ -1105,11 +1405,36 @@ export default function StudentProfiles() {
           </Form>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="outline-secondary" type="button" onClick={() => setShowFilterSettings(false)}>
+          <Button
+            variant="outline-secondary"
+            type="button"
+            onClick={() => setShowFilterSettings(false)}
+          >
             Close
           </Button>
-          <Button variant="primary" type="button" onClick={applyModalFilters}>
+          <Button
+            variant="primary"
+            type="button"
+            onClick={applyModalFilters}
+          >
             Apply
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ✅ SUCCESS MODAL */}
+      <Modal
+        show={showSuccess}
+        onHide={() => setShowSuccess(false)}
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Edit Successful</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>Student profile has been updated successfully.</Modal.Body>
+        <Modal.Footer>
+          <Button variant="primary" onClick={() => setShowSuccess(false)}>
+            OK
           </Button>
         </Modal.Footer>
       </Modal>

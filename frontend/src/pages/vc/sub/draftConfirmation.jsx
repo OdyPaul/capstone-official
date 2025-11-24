@@ -151,6 +151,8 @@ export default function DraftConfirmation() {
   // Success modal state
   const [showSuccess, setShowSuccess] = useState(false);
   const [successMessage, setSuccessMessage] = useState("All selected credentials were issued successfully.");
+  // Prevent showing success modal on initial mount with old results
+  const [isFirstRender, setIsFirstRender] = useState(true);
 
   const selectedRows = useMemo(
     () => (issuable || []).filter((p) => selectedIds.includes(p?.draft?._id)),
@@ -191,7 +193,13 @@ export default function DraftConfirmation() {
   const errorCount = (lastIssueResults || []).filter((r) => !r.ok).length;
 
   // When results arrive and no errors, show success modal like the sample
+  // but ignore the first effect run (to avoid showing modal for previous batch)
   useEffect(() => {
+    if (isFirstRender) {
+      setIsFirstRender(false);
+      return;
+    }
+
     if (successCount > 0 && errorCount === 0) {
       setSuccessMessage(
         successCount === 1
@@ -200,7 +208,7 @@ export default function DraftConfirmation() {
       );
       setShowSuccess(true);
     }
-  }, [successCount, errorCount]);
+  }, [successCount, errorCount, isFirstRender]);
 
   return (
     <section className="container py-4">
@@ -327,3 +335,4 @@ export default function DraftConfirmation() {
     </section>
   );
 }
+  

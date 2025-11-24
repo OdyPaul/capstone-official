@@ -5,6 +5,12 @@ import { API_URL as CONFIG_API_URL } from "../../../../config";
 import { renderTorFromPayload, downloadTorPdf } from "../../../lib/torRenderer";
 import { renderDiplomaFromPayload, downloadDiplomaPdf } from "../../../lib/diplomaRenderer";
 
+// ✅ Import assets so bundler gives proper URLs in dev & build
+import torBg1 from "../../../assets/public/tor-page-1.png";
+import torBg2 from "../../../assets/public/tor-page-2.png";
+// ⬇️ logo (same image as in IssuerProfile)
+import psauLogo from "../../../assets/psau_logo.png";
+
 /** Resolve API base (origin only; no trailing slash; no `/api`) */
 const stripBase = (u = "") => String(u).trim().replace(/\/+$/, "").replace(/\/api$/, "");
 const RUNTIME_ENV_URL =
@@ -80,6 +86,19 @@ const EXPLORERS = {
 };
 const txUrl = (chainId, hash) => EXPLORERS[Number(chainId)]?.tx(hash) || null;
 
+const mono = {
+  fontFamily:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+};
+
+function titleize(s = "") {
+  return s
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 /* Normalize meta (for the header info box only) */
 function normalizeMeta(res) {
   const m = res?.meta || {};
@@ -115,15 +134,22 @@ function detectPrintableKind(meta, printable) {
   const hasProgram = !!printable?.program;
   const hasFullName = !!printable?.fullName;
 
-  // Heuristics:
-  // - If template says diploma => diploma
-  // - Else if it has program+fullName but no subjects => diploma
-  // - Else if subjects exist => tor
   if (looksDiplomaBySlug) return "diploma";
   if (hasProgram && hasFullName && !hasSubjectsArray && !hasSubjectsObject) return "diploma";
   if (hasSubjectsArray || hasSubjectsObject) return "tor";
-  // Fallback: TOR (old flow)
   return "tor";
+}
+
+/* ======================= Image preloader (robust) ======================= */
+function loadImageSafe(src) {
+  return new Promise((resolve, reject) => {
+    if (!src) return resolve(null);
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(src);
+    img.onerror = () => reject(new Error(`Failed to load image: ${src}`));
+    img.src = src;
+  });
 }
 
 /* ============================== Page ============================== */
@@ -142,9 +168,31 @@ export default function VerificationPortal() {
   const hasCidInLink = qs.has("credential_id");
   const hasFastPath = !!sessionId || hasHintInLink || hasCidInLink;
 
+  // Read issuer env (like IssuerProfile)
+  const ISSUER_NAME =
+    (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_ISSUER_NAME) || "";
+  const ISSUER_DID =
+    (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_ISSUER_DID) || "";
+  const ANCHOR_ADDR =
+    (typeof import.meta !== "undefined" &&
+      import.meta.env &&
+      import.meta.env.VITE_MERKLE_ANCHOR_ADDRESS) ||
+    "";
+
+  const prettyIssuerName = useMemo(() => titleize(ISSUER_NAME), [ISSUER_NAME]);
+
   const stepsList = hasFastPath
-    ? [{ label: "Fill up" }, { label: "Request permission" }, { label: "Result" }]
-    : [{ label: "Fill up" }, { label: "Provide VC Barcode" }, { label: "Request permission" }, { label: "Result" }];
+    ? [
+        { label: "Fill up" },
+        { label: "Request permission" },
+        { label: "Result" },
+      ]
+    : [
+        { label: "Provide credential" },
+        { label: "Fill up" },
+        { label: "Request permission" },
+        { label: "Result" },
+      ];
 
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: "", org: "", purpose: "Credential verification" });
@@ -258,7 +306,7 @@ export default function VerificationPortal() {
     }
   }
 
-  /* ---------- step 2 helpers (no fast path) ---------- */
+  /* ---------- step 1 helpers (no fast path) ---------- */
   async function decodeQrFileClient(file) {
     setQrError("");
     if (!file) {
@@ -346,9 +394,16 @@ export default function VerificationPortal() {
     console.log("meta:", meta);
     console.log("template slug/name:", tmpl?.slug, tmpl?.name);
     console.log("vc_type:", meta?.vc_type, "holder:", meta?.holder || meta?.holder_name);
-    console.log("printable keys:", printable ? Object.keys(printable) : null);
-    console.log("subjects:",
-      printable?.subjects && (Array.isArray(printable.subjects) ? `array(${printable.subjects.length})` : typeof printable.subjects)
+    console.log(
+      "printable keys:",
+      printable ? Object.keys(printable) : null
+    );
+    console.log(
+      "subjects:",
+      printable?.subjects &&
+        (Array.isArray(printable.subjects)
+          ? `array(${printable.subjects.length})`
+          : typeof printable.subjects)
     );
     console.log("program:", printable?.program, "fullName:", printable?.fullName);
     console.log("detected kind:", detectPrintableKind(meta, printable));
@@ -375,19 +430,30 @@ export default function VerificationPortal() {
   async function renderAndDownloadTor(printable) {
     const mount = makeHiddenMount();
     try {
+      // ✅ Preload backgrounds; if a load fails, we silently omit that bg (still printable)
+      let bg1Url = null,
+        bg2Url = null;
+      try {
+        bg1Url = await loadImageSafe(torBg1);
+      } catch {}
+      try {
+        bg2Url = await loadImageSafe(torBg2);
+      } catch {}
+
       await renderTorFromPayload({
         mount,
         payload: printable,
-        bg1: "/assets/tor-page-1.png",
-        bg2: "/assets/tor-page-2.png",
+        ...(bg1Url ? { bg1: bg1Url } : {}),
+        ...(bg2Url ? { bg2: bg2Url } : {}),
         rowsPerFirst: 23,
         rowsPerNext: 31,
       });
+
       const pageCount = mount.querySelectorAll(".page").length;
       if (!pageCount) {
-        alert("No subjects found in the credential.");
-        return;
+        throw new Error("No subjects found in the credential (cannot build TOR).");
       }
+
       await downloadTorPdf(mount, `TOR_${printable?.studentNumber || "student"}.pdf`);
     } finally {
       mount.remove();
@@ -400,11 +466,11 @@ export default function VerificationPortal() {
       await renderDiplomaFromPayload({
         mount,
         payload: printable,
-        // Optional assets if you add them later:
-        // sealUrl: "/assets/seal.png",
-        // signatureUrl: "/assets/signature.png",
       });
-      await downloadDiplomaPdf(mount, `Diploma_${(printable?.fullName || "graduate").replace(/\s+/g, "_")}.pdf`);
+      await downloadDiplomaPdf(
+        mount,
+        `Diploma_${(printable?.fullName || "graduate").replace(/\s+/g, "_")}.pdf`
+      );
     } finally {
       mount.remove();
     }
@@ -422,44 +488,195 @@ export default function VerificationPortal() {
 
   return (
     <main className="bg-success-subtle bg-gradient min-vh-100">
-      {/* Header */}
+      {/* Header: issuer view when NO session, stepper when session is present */}
       <header className="bg-success text-white">
-        <div className="container py-3 d-flex align-items-center gap-3">
-          <div
-            className="rounded-3 bg-white bg-opacity-10 d-inline-flex align-items-center justify-content-center shadow-inner"
-            style={{ width: 40, height: 40 }}
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
-              <path d="M7 11h10v8H7z" stroke="#fff" strokeWidth="2" />
-              <path d="M9 11V8a3 3 0 116 0v3" stroke="#fff" strokeWidth="2" />
-            </svg>
-          </div>
-          <h1 className="h5 mb-0 fw-semibold">Verify Credentials</h1>
+        <div className="container py-3">
+          {hasFastPath ? (
+            <div className="d-flex align-items-center gap-3">
+              <div
+                className="rounded-3 bg-white bg-opacity-10 d-inline-flex align-items-center justify-content-center shadow-inner"
+                style={{ width: 40, height: 40 }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M7 11h10v8H7z" stroke="#fff" strokeWidth="2" />
+                  <path d="M9 11V8a3 3 0 116 0v3" stroke="#fff" strokeWidth="2" />
+                </svg>
+              </div>
+              <h1 className="h5 mb-0 fw-semibold">Verify Credentials</h1>
+            </div>
+          ) : (
+            <div className="d-flex align-items-center gap-3">
+              <div className="flex-grow-1">
+                <div className="small text-white-50 mb-1">Issuer</div>
+                <h1 className="h5 mb-0 fw-semibold">
+                  {prettyIssuerName || ISSUER_NAME || "Verification Portal"}
+                </h1>
+                {(ISSUER_DID || ANCHOR_ADDR) && (
+                  <div className="small mt-1">
+                    {ISSUER_DID && (
+                      <>
+                        Blockchain Wallet Address:&nbsp;
+                        <span style={mono}>{ISSUER_DID}</span>
+                      </>
+                    )}
+                    {ISSUER_DID && ANCHOR_ADDR && <span className="mx-2">•</span>}
+                    {ANCHOR_ADDR && (
+                      <>
+                        Anchor:&nbsp;
+                        <span style={mono}>{ANCHOR_ADDR}</span>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {hasFastPath && (
+            <div className="mt-3">
+              <Stepper step={step} steps={stepsList} onDark />
+            </div>
+          )}
         </div>
       </header>
-
-      {/* Stepper on dark header */}
-      <div className="bg-success text-white">
-        <div className="container py-4">
-          <Stepper step={step} steps={stepsList} onDark />
-        </div>
-      </div>
 
       {/* Card */}
       <section className="container">
         <div className="card shadow-sm mt-n4">
           <div className="card-body p-4 p-md-5">
-            {/* Step 1: Fill up */}
-            {step === 1 && (
+            {/* === NO SESSION: Step 1 → Provide credential (welcome + paste/upload) === */}
+            {!hasFastPath && step === 1 && (
+              <>
+                <h2 className="h3 fw-bold text-dark d-flex align-items-center gap-2">
+                  <img
+                    src={psauLogo}
+                    alt="PSAU logo"
+                    style={{ width: 40, height: 40, objectFit: "contain" }}
+                  />
+                  <span>
+                    Welcome to the {prettyIssuerName || ISSUER_NAME || "PSAU"} Verification Portal
+                  </span>
+                </h2>
+                <p className="text-muted mb-4">
+                  To start, paste the verification request link or upload the QR code from the holder.
+                </p>
+
+                <div className="row g-4 mt-2">
+                  <div className="col-lg-7">
+                    <div className="border rounded-3 p-3 h-100">
+                      <div className="d-flex align-items-center gap-2 mb-2">
+                        <span className="badge text-bg-secondary">Option A</span>
+                        <strong>Paste verification request</strong>
+                      </div>
+                      <input
+                        className="form-control"
+                        placeholder="Paste link with ?credential_id=..."
+                        value={pastedLink}
+                        onChange={(e) => tryExtractCidFromLink(e.target.value)}
+                      />
+                      <div className="form-text">
+                        We’ll only check that it contains a credential identifier.
+                      </div>
+
+                      <hr />
+
+                      <div className="d-flex align-items-center gap-2 mb-2">
+                        <span className="badge text-bg-secondary">Option B</span>
+                        <strong>Upload QR image</strong>
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="form-control"
+                        onChange={(e) => {
+                          setQrError("");
+                          const f = e.target.files?.[0] || null;
+                          if (f) decodeQrFileClient(f);
+                        }}
+                      />
+                      <div className="form-text">PNG, JPG, WEBP (max 1.5&nbsp;MB)</div>
+
+                      {qrError && (
+                        <div className="alert alert-warning py-2 mt-2 mb-0">
+                          <small>{qrError}</small>
+                        </div>
+                      )}
+
+                      <div className="mt-3 p-2 rounded bg-light border">
+                        <div className="small text-muted">Detected credential:</div>
+                        <code className="small">{hasDetectedCid ? "present" : "—"}</code>
+                      </div>
+
+                      <div className="mt-3 d-flex gap-2">
+                        {/* No numbered steps here, so no "Back" button on first screen */}
+                        <button
+                          className="btn btn-success fw-semibold"
+                          disabled={!hasDetectedCid}
+                          onClick={() => setStep(2)}
+                        >
+                          Continue
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right column (for holder QR) only makes sense if there is a sessionId */}
+                  {sessionId && (
+                    <div className="col-lg-5">
+                      <div className="border rounded-3 p-3 h-100">
+                        <div className="d-flex align-items-center gap-2 mb-2">
+                          <span className="badge text-bg-success">For holder</span>
+                          <strong>Scan this session on phone</strong>
+                        </div>
+                        <div className="d-flex align-items-center justify-content-center bg-white rounded-3 p-2">
+                          <img
+                            src={`${API_BASE}/api/verification/session/${sessionId}/qr.png?size=220`}
+                            alt="Session QR"
+                            width={220}
+                            height={220}
+                            className="img-fluid"
+                          />
+                        </div>
+                        <div className="form-text mt-3">Or share this link:</div>
+                        <div className="input-group">
+                          <input
+                            className="form-control"
+                            readOnly
+                            value={sessionDeepLink}
+                            onFocus={(e) => e.target.select()}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-outline-success"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(sessionDeepLink);
+                              } catch {}
+                            }}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* === Fill up details: step 1 (fast path) or step 2 (no session) === */}
+            {(hasFastPath ? step === 1 : step === 2) && (
               <>
                 <h2 className="h3 fw-bold text-dark">Fill up your details</h2>
-                <p className="text-muted mb-4">We will ask the holder’s permission before any verification.</p>
+                <p className="text-muted mb-4">
+                  We will ask the holder’s permission before any verification.
+                </p>
 
                 <form
                   className="row g-3 align-items-center"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    if (formReady) setStep(2);
+                    if (formReady) setStep(hasFastPath ? 2 : 3);
                   }}
                 >
                   <div className="col-md-3">
@@ -500,8 +717,21 @@ export default function VerificationPortal() {
                     />
                   </div>
 
-                  <div className="col-12 pt-2">
-                    <button type="submit" disabled={!formReady} className="btn btn-success fw-semibold">
+                  <div className="col-12 pt-2 d-flex gap-2">
+                    {!hasFastPath && (
+                      <button
+                        type="button"
+                        className="btn btn-outline-secondary"
+                        onClick={() => setStep(1)}
+                      >
+                        Back
+                      </button>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={!formReady}
+                      className="btn btn-success fw-semibold"
+                    >
                       Next
                     </button>
                   </div>
@@ -509,118 +739,13 @@ export default function VerificationPortal() {
               </>
             )}
 
-            {/* Step 2 (no fast path): Provide VC Barcode */}
-            {!hasFastPath && step === 2 && (
-              <>
-                <h2 className="h3 fw-bold text-dark">Provide the VC barcode</h2>
-                <p className="text-muted">Upload a QR image or paste a link that contains the credential.</p>
-
-                <div className="row g-4 mt-2">
-                  <div className="col-lg-7">
-                    <div className="border rounded-3 p-3 h-100">
-                      <div className="d-flex align-items-center gap-2 mb-2">
-                        <span className="badge text-bg-secondary">Option A</span>
-                        <strong>Paste link</strong>
-                      </div>
-                      <input
-                        className="form-control"
-                        placeholder="Paste link with ?credential_id=..."
-                        value={pastedLink}
-                        onChange={(e) => tryExtractCidFromLink(e.target.value)}
-                      />
-                      <div className="form-text">We’ll only check that it contains a credential (we won’t display it).</div>
-
-                      <hr />
-
-                      <div className="d-flex align-items-center gap-2 mb-2">
-                        <span className="badge text-bg-secondary">Option B</span>
-                        <strong>Upload QR image</strong>
-                      </div>
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        className="form-control"
-                        onChange={(e) => {
-                          setQrError("");
-                          const f = e.target.files?.[0] || null;
-                          if (f) decodeQrFileClient(f);
-                        }}
-                      />
-                      <div className="form-text">PNG, JPG, WEBP (max 1.5&nbsp;MB)</div>
-
-                      {qrError && (
-                        <div className="alert alert-warning py-2 mt-2 mb-0">
-                          <small>{qrError}</small>
-                        </div>
-                      )}
-
-                      <div className="mt-3 p-2 rounded bg-light border">
-                        <div className="small text-muted">Detected credential:</div>
-                        <code className="small">{hasDetectedCid ? "present" : "—"}</code>
-                      </div>
-
-                      <div className="mt-3 d-flex gap-2">
-                        <button className="btn btn-outline-secondary" onClick={() => setStep(1)}>
-                          Back
-                        </button>
-                        <button
-                          className="btn btn-success fw-semibold"
-                          disabled={!hasDetectedCid}
-                          onClick={() => setStep(3)}
-                        >
-                          Continue
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Optional helper for the holder */}
-                  <div className="col-lg-5">
-                    <div className="border rounded-3 p-3 h-100">
-                      <div className="d-flex align-items-center gap-2 mb-2">
-                        <span className="badge text-bg-success">For holder</span>
-                        <strong>Scan this session on phone</strong>
-                      </div>
-                      <div className="d-flex align-items-center justify-content-center bg-white rounded-3 p-2">
-                        <img
-                          src={`${API_BASE}/api/verification/session/${sessionId}/qr.png?size=220`}
-                          alt="Session QR"
-                          width={220}
-                          height={220}
-                          className="img-fluid"
-                        />
-                      </div>
-                      <div className="form-text mt-3">Or share this link:</div>
-                      <div className="input-group">
-                        <input
-                          className="form-control"
-                          readOnly
-                          value={sessionDeepLink}
-                          onFocus={(e) => e.target.select()}
-                        />
-                        <button
-                          type="button"
-                          className="btn btn-outline-success"
-                          onClick={async () => {
-                            try {
-                              await navigator.clipboard.writeText(sessionDeepLink);
-                            } catch {}
-                          }}
-                        >
-                          Copy
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Step 3 (no fast path) OR Step 2 (fast path): Request permission */}
+            {/* === Request permission: step 2 (fast path) / step 3 (no session) === */}
             {(hasFastPath ? step === 2 : step === 3) && (
               <>
                 <h2 className="h3 fw-bold text-dark">Request permission</h2>
-                <p className="text-muted">We’ll ask the holder to approve sending their credential.</p>
+                <p className="text-muted">
+                  We’ll ask the holder to approve sending their credential.
+                </p>
 
                 <div className="border rounded-3 p-3">
                   <div className="row g-2">
@@ -634,12 +759,17 @@ export default function VerificationPortal() {
                     </div>
                     <div className="col-sm-6">
                       <div className="small text-muted mt-2">Purpose</div>
-                      <div className="fw-semibold">{form.purpose || "Credential verification"}</div>
+                      <div className="fw-semibold">
+                        {form.purpose || "Credential verification"}
+                      </div>
                     </div>
                   </div>
 
                   <div className="mt-3 d-flex gap-2">
-                    <button className="btn btn-outline-secondary" onClick={() => setStep(hasFastPath ? 1 : 2)}>
+                    <button
+                      className="btn btn-outline-secondary"
+                      onClick={() => setStep(hasFastPath ? 1 : 2)}
+                    >
                       Back
                     </button>
                     <button
@@ -654,7 +784,7 @@ export default function VerificationPortal() {
               </>
             )}
 
-            {/* Result */}
+            {/* === Result: step 3 (fast path) / step 4 (no session) === */}
             {(hasFastPath ? step === 3 : step === 4) && (
               <>
                 <h2 className="h3 fw-bold text-dark">Result</h2>
@@ -666,7 +796,9 @@ export default function VerificationPortal() {
                       <span className="text-dark">Requesting VC from user…</span>
                     </div>
                     <Progress value={progress} />
-                    <div className="small text-muted mt-2">Waiting for the holder to approve the request.</div>
+                    <div className="small text-muted mt-2">
+                      Waiting for the holder to approve the request.
+                    </div>
                   </div>
                 )}
 
@@ -677,7 +809,9 @@ export default function VerificationPortal() {
                       <span className="text-dark">{STAGE_MESSAGES[stageIndex]}</span>
                     </div>
                     <Progress value={progress} />
-                    <div className="small text-muted mt-2">Verifying signature, Merkle proof, and anchoring…</div>
+                    <div className="small text-muted mt-2">
+                      Verifying signature, Merkle proof, and anchoring…
+                    </div>
                   </div>
                 )}
 
@@ -688,14 +822,17 @@ export default function VerificationPortal() {
                         <div className="alert alert-success mt-3">
                           <div className="fw-semibold mb-1">Credential is valid.</div>
                           <div className="small">
-                            {result.reason === "not_anchored" ? "Note: Valid, but not anchored yet." : "All checks passed."}
+                            {result.reason === "not_anchored"
+                              ? "Note: Valid, but not anchored yet."
+                              : "All checks passed."}
                           </div>
                         </div>
 
                         {(() => {
                           const meta = normalizeMeta(result);
                           const chainId = meta.anch.chain_id;
-                          const chainLabel = EXPLORERS[Number(chainId)]?.label || (chainId ?? "—");
+                          const chainLabel =
+                            EXPLORERS[Number(chainId)]?.label || (chainId ?? "—");
                           const tx = meta.anch.tx_hash;
                           const root = meta.anch.merkle_root;
                           const printable = result?.meta?.printable;
@@ -746,9 +883,26 @@ export default function VerificationPortal() {
                               {/* Download only (no on-screen preview) */}
                               <div className="mt-4 d-flex gap-2">
                                 <button
-                                  className={`btn fw-semibold ${printable ? "btn-success" : "btn-outline-secondary disabled"}`}
-                                  onClick={() => printable && handleDownload(printable, result?.meta)}
-                                  title={printable ? "Generate and download PDF" : "Printable payload missing"}
+                                  className={`btn fw-semibold ${
+                                    printable ? "btn-success" : "btn-outline-secondary disabled"
+                                  }`}
+                                  onClick={async () => {
+                                    if (!printable) return;
+                                    try {
+                                      await handleDownload(printable, result?.meta);
+                                    } catch (err) {
+                                      console.error("[Download] failed:", err);
+                                      alert(
+                                        err?.message ||
+                                          "Failed to generate PDF. See console for details."
+                                      );
+                                    }
+                                  }}
+                                  title={
+                                    printable
+                                      ? "Generate and download PDF"
+                                      : "Printable payload missing"
+                                  }
                                 >
                                   {label}
                                 </button>

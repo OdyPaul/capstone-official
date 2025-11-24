@@ -13,7 +13,6 @@ import {
   Table,
   Modal,
   InputGroup,
-  ListGroup,
 } from "react-bootstrap";
 import {
   FaSearch,
@@ -92,6 +91,7 @@ export default function VerifyUsers() {
   const [stuLoading, setStuLoading] = useState(false);
   const [stuResults, setStuResults] = useState([]);
   const [pickedStudent, setPickedStudent] = useState(null);
+  const [stuViewMode, setStuViewMode] = useState("table"); // "table" | "detail"
   const stuSearchRef = useRef(null);
 
   // reject modal
@@ -127,7 +127,9 @@ export default function VerifyUsers() {
     } catch (e) {
       setItems([]);
       setTotalRemote(0);
-      setErr(e?.response?.data?.message || e?.message || "Failed to load requests");
+      setErr(
+        e?.response?.data?.message || e?.message || "Failed to load requests"
+      );
     } finally {
       setLoading(false);
     }
@@ -139,13 +141,16 @@ export default function VerifyUsers() {
     setPickedStudent(null);
     setStuQ("");
     setStuResults([]);
+    setStuViewMode("table");
     setLoadingCurrent(true);
     try {
       const res = await axios.get(`${VPATH}/${reqId}`, authz);
       setCurrent(res.data);
     } catch (e) {
       setCurrent(null);
-      setErr(e?.response?.data?.message || e?.message || "Failed to open request");
+      setErr(
+        e?.response?.data?.message || e?.message || "Failed to open request"
+      );
     } finally {
       setLoadingCurrent(false);
       setTimeout(() => stuSearchRef.current?.focus(), 350);
@@ -154,7 +159,10 @@ export default function VerifyUsers() {
 
   // totals/paging
   const total = totalRemote;
-  const pageCount = Math.max(1, Math.ceil(Math.max(0, total) / Math.max(1, limit)));
+  const pageCount = Math.max(
+    1,
+    Math.ceil(Math.max(0, total) / Math.max(1, limit))
+  );
   const pageRows = items;
 
   // auto-refetch on key changes
@@ -180,9 +188,11 @@ export default function VerifyUsers() {
       });
       const arr = Array.isArray(res.data) ? res.data : [];
       setStuResults(arr);
+      setStuViewMode("table");
       return arr;
     } catch {
       setStuResults([]);
+      setStuViewMode("table");
       return [];
     } finally {
       setStuLoading(false);
@@ -191,20 +201,34 @@ export default function VerifyUsers() {
 
   const autoMatch = async () => {
     if (!current) return;
-    const full = current?.personal?.fullName || current?.user?.fullName || "";
+    const full =
+      current?.personal?.fullName || current?.user?.fullName || "";
     if (!full) return;
     setStuQ(full);
     const arr = await searchStudents(full);
     const scored = (arr || []).map((s) => {
       let score = nameSimilarity(full, s?.fullName || "");
-      const gradYearReq = (current?.education?.graduationDate || "").slice(0, 4);
-      const gradYearStu = s?.dateGraduated ? new Date(s.dateGraduated).getFullYear() : null;
-      if (gradYearReq && gradYearStu && String(gradYearStu) === String(gradYearReq)) score += 0.15;
+      const gradYearReq = (current?.education?.graduationDate || "").slice(
+        0,
+        4
+      );
+      const gradYearStu = s?.dateGraduated
+        ? new Date(s.dateGraduated).getFullYear()
+        : null;
+      if (
+        gradYearReq &&
+        gradYearStu &&
+        String(gradYearStu) === String(gradYearReq)
+      )
+        score += 0.15;
       return { s, score };
     });
     scored.sort((a, b) => b.score - a.score);
     const top = scored[0]?.s || null;
-    if (top) setPickedStudent(top);
+    if (top) {
+      setPickedStudent(top);
+      setStuViewMode("detail");
+    }
   };
 
   // actions
@@ -286,7 +310,7 @@ export default function VerifyUsers() {
             <FaSearch />
           </InputGroup.Text>
           <Form.Control
-            placeholder="Search by name, email, DID, status…"
+            placeholder="Search by name, email, status…"
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
@@ -310,7 +334,13 @@ export default function VerifyUsers() {
             disabled={loading}
             title="Refresh"
           >
-            {loading ? <Spinner size="sm" animation="border" /> : <><FaSync className="me-1" /> Refresh</>}
+            {loading ? (
+              <Spinner size="sm" animation="border" />
+            ) : (
+              <>
+                <FaSync className="me-1" /> Refresh
+              </>
+            )}
           </Button>
           <Button
             type="button"
@@ -325,9 +355,21 @@ export default function VerifyUsers() {
 
       {/* Filter tags under the search input (like StudentProfiles) */}
       <div className="mb-3 d-flex flex-wrap gap-2">
-        {q ? <Badge bg="light" text="dark">q: {q}</Badge> : <Badge bg="light" text="dark">q: (empty)</Badge>}
-        <Badge bg="light" text="dark">Status: {statusLabel}</Badge>
-        <Badge bg="light" text="dark">Page size: {limit}</Badge>
+        {q ? (
+          <Badge bg="light" text="dark">
+            q: {q}
+          </Badge>
+        ) : (
+          <Badge bg="light" text="dark">
+            q: (empty)
+          </Badge>
+        )}
+        <Badge bg="light" text="dark">
+          Status: {statusLabel}
+        </Badge>
+        <Badge bg="light" text="dark">
+          Page size: {limit}
+        </Badge>
         <Badge bg="secondary">Total: {total}</Badge>
       </div>
 
@@ -341,7 +383,9 @@ export default function VerifyUsers() {
       <Card>
         <Card.Header className="bg-light d-flex justify-content-between align-items-center">
           <strong>Verification Requests</strong>
-          <span className="text-muted small">{total ? `Total ${total}` : "No requests"}</span>
+          <span className="text-muted small">
+            {total ? `Total ${total}` : "No requests"}
+          </span>
         </Card.Header>
         <Card.Body className="p-0">
           <div className="table-responsive">
@@ -351,7 +395,6 @@ export default function VerifyUsers() {
                   <th style={{ width: 40 }}>#</th>
                   <th>Submitted</th>
                   <th>User</th>
-                  <th>DID</th>
                   <th>Status</th>
                   <th style={{ width: 160 }}>Action</th>
                 </tr>
@@ -359,7 +402,7 @@ export default function VerifyUsers() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-5">
+                    <td colSpan={5} className="text-center py-5">
                       <Spinner animation="border" className="me-2" /> Loading…
                     </td>
                   </tr>
@@ -371,23 +414,35 @@ export default function VerifyUsers() {
                     return (
                       <tr key={r?._id || i}>
                         <td className="text-muted">{i}</td>
-                        <td title={r?.createdAt || ""}>{ts ? ts.toLocaleString() : "—"}</td>
+                        <td title={r?.createdAt || ""}>
+                          {ts ? ts.toLocaleString() : "—"}
+                        </td>
                         <td>
                           <div className="d-flex flex-column">
-                            <span className="fw-semibold">{u?.fullName || u?.username || "—"}</span>
-                            <span className="text-muted small">{u?.email || "—"}</span>
-                            <span className="text-muted small">{shortId(u?._id)}</span>
+                            <span className="fw-semibold">
+                              {u?.fullName || u?.username || "—"}
+                            </span>
+                            <span className="text-muted small">
+                              {u?.email || "—"}
+                            </span>
+                            <span className="text-muted small">
+                              {shortId(u?._id)}
+                            </span>
                           </div>
                         </td>
-                        <td className="text-truncate" style={{ maxWidth: 220 }} title={r?.did || ""}>
-                          {r?.did || "—"}
-                        </td>
                         <td>
-                          <Badge bg={statusVariant(r?.status)}>{r?.status || "pending"}</Badge>
+                          <Badge bg={statusVariant(r?.status)}>
+                            {r?.status || "pending"}
+                          </Badge>
                         </td>
                         <td>
                           <div className="d-flex gap-2">
-                            <Button size="sm" variant="outline-secondary" onClick={() => openVerify(r._id)} title="Open">
+                            <Button
+                              size="sm"
+                              variant="outline-secondary"
+                              onClick={() => openVerify(r._id)}
+                              title="Open"
+                            >
                               <FaEye className="me-1" />
                               Open
                             </Button>
@@ -398,7 +453,7 @@ export default function VerifyUsers() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={6} className="text-center py-4 text-muted">
+                    <td colSpan={5} className="text-center py-4 text-muted">
                       No verification requests found.
                     </td>
                   </tr>
@@ -408,12 +463,24 @@ export default function VerifyUsers() {
           </div>
         </Card.Body>
         <Card.Footer className="d-flex align-items-center justify-content-between">
-          <div className="text-muted small">Page {page} of {pageCount}</div>
+          <div className="text-muted small">
+            Page {page} of {pageCount}
+          </div>
           <div className="d-flex gap-2">
-            <Button size="sm" variant="outline-secondary" onClick={() => setPage(1)} disabled={page <= 1}>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage(1)}
+              disabled={page <= 1}
+            >
               « First
             </Button>
-            <Button size="sm" variant="outline-secondary" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1}>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+            >
               ‹ Prev
             </Button>
             <Form.Select
@@ -431,10 +498,20 @@ export default function VerifyUsers() {
                 </option>
               ))}
             </Form.Select>
-            <Button size="sm" variant="outline-secondary" onClick={() => setPage((p) => Math.min(pageCount, p + 1))} disabled={page >= pageCount}>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
+              disabled={page >= pageCount}
+            >
               Next ›
             </Button>
-            <Button size="sm" variant="outline-secondary" onClick={() => setPage(pageCount)} disabled={page >= pageCount}>
+            <Button
+              size="sm"
+              variant="outline-secondary"
+              onClick={() => setPage(pageCount)}
+              disabled={page >= pageCount}
+            >
               Last »
             </Button>
           </div>
@@ -442,7 +519,11 @@ export default function VerifyUsers() {
       </Card>
 
       {/* Settings modal */}
-      <Modal show={showSettings} onHide={() => setShowSettings(false)} centered>
+      <Modal
+        show={showSettings}
+        onHide={() => setShowSettings(false)}
+        centered
+      >
         <Modal.Header closeButton>
           <Modal.Title>List Filters</Modal.Title>
         </Modal.Header>
@@ -476,7 +557,13 @@ export default function VerifyUsers() {
       </Modal>
 
       {/* Verify / Compare modal */}
-      <Modal show={showVerify} onHide={() => setShowVerify(false)} centered size="xl" scrollable>
+      <Modal
+        show={showVerify}
+        onHide={() => setShowVerify(false)}
+        centered
+        size="xl"
+        scrollable
+      >
         <Modal.Header closeButton>
           <Modal.Title>Verify Account & Link Student</Modal.Title>
         </Modal.Header>
@@ -500,7 +587,10 @@ export default function VerifyUsers() {
                       <div className="text-muted small">Request ID</div>
                       <div>
                         {shortId(current._id)}{" "}
-                        <Badge bg={statusVariant(current.status)} className="ms-2">
+                        <Badge
+                          bg={statusVariant(current.status)}
+                          className="ms-2"
+                        >
                           {current.status}
                         </Badge>
                       </div>
@@ -509,13 +599,17 @@ export default function VerifyUsers() {
                     <Row className="mb-3">
                       <Col md={6}>
                         <div className="text-muted small">Full Name</div>
-                        <div className="fw-semibold">{safe(current?.personal?.fullName)}</div>
+                        <div className="fw-semibold">
+                          {safe(current?.personal?.fullName)}
+                        </div>
                       </Col>
                       <Col md={6}>
                         <div className="text-muted small">Birth Date</div>
                         <div>
                           {current?.personal?.birthDate
-                            ? new Date(current.personal.birthDate).toLocaleDateString()
+                            ? new Date(
+                                current.personal.birthDate
+                              ).toLocaleDateString()
                             : "—"}
                         </div>
                       </Col>
@@ -545,9 +639,15 @@ export default function VerifyUsers() {
 
                     <Row className="g-3">
                       <Col md={6}>
-                        <div className="text-muted small mb-1">Selfie Image</div>
+                        <div className="text-muted small mb-1">
+                          Selfie Image
+                        </div>
                         {current?.selfieImage?.url ? (
-                          <a href={current.selfieImage.url} target="_blank" rel="noreferrer">
+                          <a
+                            href={current.selfieImage.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
                             <img
                               src={current.selfieImage.url}
                               alt="Selfie"
@@ -567,7 +667,11 @@ export default function VerifyUsers() {
                       <Col md={6}>
                         <div className="text-muted small mb-1">ID Image</div>
                         {current?.idImage?.url ? (
-                          <a href={current.idImage.url} target="_blank" rel="noreferrer">
+                          <a
+                            href={current.idImage.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
                             <img
                               src={current.idImage.url}
                               alt="ID"
@@ -594,7 +698,12 @@ export default function VerifyUsers() {
                 <Card className="h-100">
                   <Card.Header className="bg-light d-flex justify-content-between align-items-center">
                     <strong>Pick Student to Link</strong>
-                    <Button size="sm" variant="outline-primary" onClick={autoMatch} title="Auto-match by name & year">
+                    <Button
+                      size="sm"
+                      variant="outline-primary"
+                      onClick={autoMatch}
+                      title="Auto-match by name & year"
+                    >
                       <FaLink className="me-1" />
                       Auto-match
                     </Button>
@@ -616,82 +725,180 @@ export default function VerifyUsers() {
                           value={stuQ}
                           onChange={(e) => setStuQ(e.target.value)}
                         />
-                        <Button type="submit" variant="primary" disabled={stuLoading}>
-                          {stuLoading ? <Spinner size="sm" animation="border" /> : "Search"}
+                        <Button
+                          type="submit"
+                          variant="primary"
+                          disabled={stuLoading}
+                        >
+                          {stuLoading ? (
+                            <Spinner size="sm" animation="border" />
+                          ) : (
+                            "Search"
+                          )}
                         </Button>
                       </InputGroup>
                     </Form>
 
-                    <Row className="g-3">
-                      <Col md={6}>
-                        <div className="text-muted small mb-1">Search Results</div>
-                        <div className="border rounded" style={{ maxHeight: 260, overflow: "auto" }}>
+                    {stuViewMode === "table" ? (
+                      <>
+                        <div className="text-muted small mb-1">
+                          Search Results
+                        </div>
+                        <div
+                          className="border rounded"
+                          style={{ maxHeight: 320, overflow: "auto" }}
+                        >
                           {stuLoading ? (
                             <div className="p-3 text-center">
                               <Spinner animation="border" />
                             </div>
                           ) : (stuResults || []).length ? (
-                            <ListGroup variant="flush">
-                              {stuResults.slice(0, 20).map((s) => (
-                                <ListGroup.Item
-                                  key={s._id}
-                                  action
-                                  active={pickedStudent?._id === s._id}
-                                  onClick={() => setPickedStudent(s)}
-                                  className="d-flex justify-content-between align-items-center"
-                                >
-                                  <div className="me-2">
-                                    <div className="fw-semibold">{s.fullName || "Unnamed"}</div>
-                                    <div className="text-muted small">
-                                      {s.studentNumber || "—"} • {s.program || "—"}
-                                    </div>
-                                  </div>
-                                  <Badge bg="secondary">{shortId(s._id)}</Badge>
-                                </ListGroup.Item>
-                              ))}
-                            </ListGroup>
+                            <Table
+                              hover
+                              size="sm"
+                              className="mb-0 align-middle"
+                            >
+                              <thead className="table-light">
+                                <tr>
+                                  <th style={{ width: 40 }}>#</th>
+                                  <th>Name</th>
+                                  <th>Student #</th>
+                                  <th>Program</th>
+                                  <th>Grad</th>
+                                  <th style={{ width: 60 }}>View</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {stuResults.map((s, idx) => (
+                                  <tr key={s._id}>
+                                    <td className="text-muted small">
+                                      {idx + 1}
+                                    </td>
+                                    <td>{s.fullName || "—"}</td>
+                                    <td>{s.studentNumber || "—"}</td>
+                                    <td>{s.program || "—"}</td>
+                                    <td>
+                                      {s.dateGraduated
+                                        ? new Date(
+                                            s.dateGraduated
+                                          ).getFullYear()
+                                        : "—"}
+                                    </td>
+                                    <td>
+                                      <Button
+                                        size="sm"
+                                        variant="outline-secondary"
+                                        title="View details"
+                                        onClick={() => {
+                                          setPickedStudent(s);
+                                          setStuViewMode("detail");
+                                        }}
+                                      >
+                                        <FaEye />
+                                      </Button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </Table>
                           ) : (
-                            <div className="p-3 text-muted small">No results.</div>
+                            <div className="p-3 text-muted small">
+                              No results.
+                            </div>
                           )}
                         </div>
-                      </Col>
-
-                      <Col md={6}>
-                        <div className="text-muted small mb-1">Selected Student</div>
-                        {pickedStudent ? (
-                          <div className="border rounded p-2">
-                            {pickedStudent.photoUrl ? (
-                              <img
-                                src={pickedStudent.photoUrl}
-                                alt="Student"
-                                style={{
-                                  width: "100%",
-                                  maxHeight: 160,
-                                  objectFit: "cover",
-                                  borderRadius: 6,
-                                  border: "1px solid #eee",
-                                }}
-                              />
-                            ) : null}
-                            <div className="mt-2">
-                              <div className="fw-semibold">{pickedStudent.fullName}</div>
-                              <div className="text-muted small">
-                                #{pickedStudent.studentNumber || "—"} • {pickedStudent.program || "—"}
-                              </div>
-                              <div className="text-muted small">
-                                Grad:{" "}
-                                {pickedStudent.dateGraduated
-                                  ? new Date(pickedStudent.dateGraduated).toLocaleDateString()
-                                  : "—"}
-                              </div>
-                              <div className="text-muted small">ID: {shortId(pickedStudent._id)}</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="d-flex justify-content-between align-items-center mb-2">
+                          <div>
+                            <div className="text-muted small">
+                              Selected Student
+                            </div>
+                            <div className="fw-semibold">
+                              {pickedStudent?.fullName || "—"}
                             </div>
                           </div>
+                          <Button
+                            size="sm"
+                            variant="outline-secondary"
+                            onClick={() => setStuViewMode("table")}
+                          >
+                            ‹ Back to results
+                          </Button>
+                        </div>
+                        {pickedStudent ? (
+                          <Row className="g-3">
+                            <Col md={5}>
+                              {pickedStudent.photoUrl ? (
+                                <img
+                                  src={pickedStudent.photoUrl}
+                                  alt="Student"
+                                  style={{
+                                    width: "100%",
+                                    maxHeight: 200,
+                                    objectFit: "cover",
+                                    borderRadius: 6,
+                                    border: "1px solid #eee",
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  className="border rounded bg-light d-flex align-items-center justify-content-center"
+                                  style={{ height: 200 }}
+                                >
+                                  <span className="text-muted small">
+                                    No photo
+                                  </span>
+                                </div>
+                              )}
+                            </Col>
+                            <Col md={7}>
+                              <div className="mb-2">
+                                <div className="text-muted small">
+                                  Full Name
+                                </div>
+                                <div className="fw-semibold">
+                                  {pickedStudent.fullName || "—"}
+                                </div>
+                              </div>
+                              <div className="mb-2">
+                                <div className="text-muted small">
+                                  Student Number
+                                </div>
+                                <div>
+                                  {pickedStudent.studentNumber || "—"}
+                                </div>
+                              </div>
+                              <div className="mb-2">
+                                <div className="text-muted small">Program</div>
+                                <div>{pickedStudent.program || "—"}</div>
+                              </div>
+                              <div className="mb-2">
+                                <div className="text-muted small">
+                                  Graduation
+                                </div>
+                                <div>
+                                  {pickedStudent.dateGraduated
+                                    ? new Date(
+                                        pickedStudent.dateGraduated
+                                      ).toLocaleDateString()
+                                    : "—"}
+                                </div>
+                              </div>
+                              <div className="mb-2">
+                                <div className="text-muted small">ID</div>
+                                <div>{shortId(pickedStudent._id)}</div>
+                              </div>
+                            </Col>
+                          </Row>
                         ) : (
-                          <div className="text-muted small">Pick a student from the list.</div>
+                          <div className="text-muted small">
+                            Pick a student from the search results.
+                          </div>
                         )}
-                      </Col>
-                    </Row>
+                      </>
+                    )}
                   </Card.Body>
                 </Card>
               </Col>
@@ -699,9 +906,7 @@ export default function VerifyUsers() {
           )}
         </Modal.Body>
         <Modal.Footer className="d-flex justify-content-between">
-          <div className="text-muted small">
-            {current?.did ? <>DID: <span className="text-monospace">{current.did}</span></> : null}
-          </div>
+          <div className="text-muted small" />
           <div className="d-flex gap-2">
             <Button
               variant="outline-danger"
@@ -718,15 +923,27 @@ export default function VerifyUsers() {
               disabled={!current || !pickedStudent || acting}
               title="Verify & Link to selected student"
             >
-              {acting ? <Spinner size="sm" animation="border" className="me-2" /> : <FaCheck className="me-1" />}
-              Verify & Link
+              {acting ? (
+                <Spinner
+                  size="sm"
+                  animation="border"
+                  className="me-2"
+                />
+              ) : (
+                <FaCheck className="me-1" />
+              )}
+              Verify &amp; Link
             </Button>
           </div>
         </Modal.Footer>
       </Modal>
 
       {/* Reject reason modal */}
-      <Modal show={showReject} onHide={() => setShowReject(false)} centered>
+      <Modal
+        show={showReject}
+        onHide={() => setShowReject(false)}
+        centered
+      >
         <Modal.Header closeButton>
           <Modal.Title>Reject Request</Modal.Title>
         </Modal.Header>
@@ -741,15 +958,33 @@ export default function VerifyUsers() {
               onChange={(e) => setRejectReason(e.target.value)}
               placeholder="Optional: why is this request rejected?"
             />
-            <Form.Text className="text-muted">This reason may be shown to the requester.</Form.Text>
+            <Form.Text className="text-muted">
+              This reason may be shown to the requester.
+            </Form.Text>
           </Form.Group>
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowReject(false)} disabled={acting}>
+          <Button
+            variant="secondary"
+            onClick={() => setShowReject(false)}
+            disabled={acting}
+          >
             Cancel
           </Button>
-          <Button variant="danger" onClick={doReject} disabled={acting || !current}>
-            {acting ? <Spinner size="sm" animation="border" className="me-2" /> : <FaTimes className="me-1" />}
+          <Button
+            variant="danger"
+            onClick={doReject}
+            disabled={acting || !current}
+          >
+            {acting ? (
+              <Spinner
+                size="sm"
+                animation="border"
+                className="me-2"
+              />
+            ) : (
+              <FaTimes className="me-1" />
+            )}
             Reject Request
           </Button>
         </Modal.Footer>

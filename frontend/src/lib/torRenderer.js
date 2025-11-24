@@ -63,16 +63,56 @@ const pick = (o, keys) => {
   }
   return undefined;
 };
+
 const normOne = (it, fallbackYear = "", fallbackSem = "") => {
-  const yearLevel = pick(it, ["yearLevel", "level", "year_level", "year"]) ?? fallbackYear ?? "";
-  const semester = pick(it, ["semester", "term", "sem"]) ?? fallbackSem ?? "";
+  const yearLevel =
+    pick(it, ["yearLevel", "YearLevel", "level", "year_level", "year"]) ??
+    fallbackYear ?? "";
+  const semester =
+    pick(it, ["semester", "Semester", "term", "sem"]) ?? fallbackSem ?? "";
+
   const subjectCode =
-    pick(it, ["subjectCode", "courseCode", "code", "subject_code", "course_no", "courseNumber"]) || "";
+    pick(it, [
+      "subjectCode",
+      "SubjectCode",
+      "courseCode",
+      "code",
+      "subject_code",
+      "course_no",
+      "courseNumber",
+    ]) ||
+    pick(it?.subject, ["code", "subjectCode", "course_no", "courseNumber"]) ||
+    "";
+
+  // Prefer description; fall back to various "title" keys
+  const subjectTitle =
+    pick(it, ["subjectTitle", "SubjectTitle", "title", "name", "description"]) ||
+    pick(it?.subject, ["subjectTitle", "SubjectTitle", "title", "name", "description"]) ||
+    "";
+
   const subjectDescription =
-    pick(it, ["subjectDescription", "description", "name", "title"]) || "";
-  const units = String(pick(it, ["units", "credit", "credits", "creditUnits", "unitsEarned"]) ?? "");
-  const finalGrade = String(pick(it, ["finalGrade", "grade", "final", "mark"]) ?? "");
-  return { yearLevel, semester, subjectCode, subjectDescription, units, finalGrade, reExam: "", ay: "" };
+    pick(it, ["subjectDescription", "description", "name", "title"]) ||
+    subjectTitle ||
+    "";
+
+  const units = String(
+    pick(it, ["units", "Units", "credit", "credits", "creditUnits", "unitsEarned"]) ?? ""
+  );
+  const finalGrade = String(
+    pick(it, ["finalGrade", "FinalGrade", "grade", "final", "mark"]) ?? ""
+  );
+
+  return {
+    yearLevel,
+    semester,
+    subjectCode,
+    subjectDescription,
+    subjectTitle,
+    units,
+    finalGrade,
+    reExam: "",
+    ay: "",
+  };
 };
 
 function flattenObjectOfArrays(obj, keyYear = "", keySem = "") {
@@ -91,10 +131,16 @@ function flattenObjectOfArrays(obj, keyYear = "", keySem = "") {
 }
 
 function extractSubjects(p) {
-  // a) ideal: array at p.subjects
+  // common shapes
+  if (Array.isArray(p?.data?.subjects)) return p.data.subjects.map((it) => normOne(it));
   if (Array.isArray(p?.subjects)) return p.subjects.map((it) => normOne(it));
+  if (Array.isArray(p?.grades)) return p.grades.map((it) => normOne(it));
+  if (Array.isArray(p?.data?.grades)) return p.data.grades.map((it) => normOne(it));
+  if (Array.isArray(p?.tor?.subjects)) return p.tor.subjects.map((it) => normOne(it));
+  if (Array.isArray(p?.tor?.grades)) return p.tor.grades.map((it) => normOne(it));
+  if (Array.isArray(p?.transcript?.grades)) return p.transcript.grades.map((it) => normOne(it));
 
-  // b) p.subjects is a JSON string of array or object
+  // stringified
   if (typeof p?.subjects === "string") {
     try {
       const parsed = JSON.parse(p.subjects);
@@ -103,21 +149,16 @@ function extractSubjects(p) {
     } catch {}
   }
 
-  // c) p.subjects is an object of arrays (grouped by term)
+  // object-of-arrays, array-like objects
   if (p?.subjects && typeof p.subjects === "object") {
-    // Also support weird "array-like objects" that came from serialization
     if (typeof p.subjects.length === "number" && p.subjects.length > 0) {
-      try {
-        return Array.from(p.subjects).map((it) => normOne(it));
-      } catch {
-        // fall through to generic object flatten
-      }
+      try { return Array.from(p.subjects).map((it) => normOne(it)); } catch {}
     }
     const flat = flattenObjectOfArrays(p.subjects);
     if (flat.length) return flat;
   }
 
-  // d) other known homes (kept for completeness)
+  // conservative fallback
   const candidates = [
     p?.data?.subjects,
     p?.transcript?.subjects,
@@ -129,8 +170,38 @@ function extractSubjects(p) {
     return candidates[0].map((it) => normOne(it));
   }
 
+  // last resort: unwrap nested `data`
+  if (p?.data && typeof p.data === "object") {
+    const inner = extractSubjects(p.data);
+    if (inner.length) return inner;
+  }
   return [];
 }
+
+/* ===== adapt top/header fields (works with VC or printable shape) ===== */
+const adaptHeader = (p = {}) => {
+  const cs =
+    p.credentialSubject ||
+    p.subject ||
+    p?.data?.credentialSubject ||
+    p?.data?.subject ||
+    {};
+
+  return {
+    fullName: p.fullName || cs.fullName || cs.name || p.name || "",
+    studentNumber: p.studentNumber || cs.studentNumber || cs.student_id || cs.id || "",
+    address: p.address || cs.address || "",
+    entranceCredentials: p.entranceCredentials || cs.entranceCredentials || "",
+    highSchool: p.highSchool || cs.highSchool || "",
+    program: p.program || cs.program || cs.course || "",
+    major: p.major || cs.major || "",
+    placeOfBirth: p.placeOfBirth || cs.placeOfBirth || cs.birthPlace || "",
+    dateAdmission: p.dateAdmission || cs.dateAdmission || cs.admissionDate || "",
+    dateGraduated: p.dateGraduated || cs.dateGraduated || cs.graduationDate || "",
+    dateOfBirth: p.dateOfBirth || cs.dateOfBirth || cs.birthDate || "",
+    gwa: p.gwa || cs.gwa || cs.GWA || "",
+  };
+};
 
 /* ===== build & sort rows ===== */
 const buildRows = (rawSubjects = [], admissionDate = null) => {
@@ -141,7 +212,7 @@ const buildRows = (rawSubjects = [], admissionDate = null) => {
       yearLevel: s.yearLevel,
       semester: sem,
       subjectCode: s.subjectCode || "",
-      subjectDescription: s.subjectDescription || "",
+      subjectDescription: s.subjectDescription || s.subjectTitle || s.title || s.name || "",
       finalGrade: (s.finalGrade ?? "").toString(),
       reExam: s.reExam || "",
       units: (s.units ?? "").toString(),
@@ -162,29 +233,25 @@ const buildRows = (rawSubjects = [], admissionDate = null) => {
 };
 
 /* ===== render pages ===== */
-/**
- * Render into `mount`. Returns number of pages rendered.
- * Renders one blank page (with header fields) if subjects are missing/empty.
- */
 export async function renderTorFromPayload({
   mount,
   payload,
-  bg1 = "../assets/public/tor-page-1.png",
-  bg2 = "../assets/public/tor-page-2.png",
+  // 👇 use your new template images by default
+  bg1 = "/assets/first-page.png",
+  bg2 = "/assets/continue-page.png",
   rowsPerFirst = 23,
   rowsPerNext = 31,
 }) {
   if (!mount) return 0;
-  const p = payload || {};
 
-  // adapt + build
-  const adapted = extractSubjects(p);
-  const rows = buildRows(adapted, p.dateAdmission || null);
+  const header = adaptHeader(payload || {});
+  const adapted = extractSubjects(payload || {});
+  const rows = buildRows(adapted, header.dateAdmission || null);
 
   // paginate or keep one empty page
   const chunks = rows.length ? paginateRows(rows, rowsPerFirst, rowsPerNext) : [[]];
 
-  // group rows per page + show term label only on first row of each term per page
+  // show TERM only on the first row of each term *per page*
   const pages = chunks.map((chunk, idx) => {
     let prevKey = null;
     const rowsWithTerm = chunk.map((r) => {
@@ -202,7 +269,6 @@ export async function renderTorFromPayload({
   ]);
   await Promise.all([preloadImage(bg1Data), preloadImage(bg2Data)]);
 
-  // mm-based (matches your original server HTML)
   const html = `
 <style>
   @page { size: A4; margin: 10mm; }
@@ -213,6 +279,7 @@ export async function renderTorFromPayload({
     background-repeat: no-repeat; background-position: 0 0; background-size: 190mm 277mm;
     --left: 10mm; --right: 10mm;
     --rows-top-first: 92mm; --rows-top-next: 72mm;
+    /* field anchors roughly matched to template lines */
     --name-x: 35mm; --name-y: 47mm; --admit-x:150mm; --admit-y:47mm;
     --addr-x: 35mm; --addr-y: 54mm; --pob-x: 150mm; --pob-y: 54mm;
     --entr-x: 35mm; --entr-y: 61mm; --dob-x:150mm; --dob-y:61mm;
@@ -268,20 +335,20 @@ export async function renderTorFromPayload({
       const first = pg.isFirst;
       const absFields = first
         ? `
-          <div class="field name">${p.fullName || ""}</div>
-          <div class="field admit">${toISODate(p.dateAdmission || "")}</div>
-          <div class="field address">${p.address || ""}</div>
-          <div class="field pob">${p.placeOfBirth || ""}</div>
-          <div class="field entr">${p.entranceCredentials || ""}</div>
-          <div class="field dob"></div>
-          <div class="field hs">${p.highSchool || ""}</div>
-          <div class="field dategrad">${toISODate(p.dateGraduated || "")}</div>
-          <div class="field program">${p.program || ""}</div>
-          <div class="field major">${p.major || ""}</div>
-          <div class="field grad">${toISODate(p.dateGraduated || "")}</div>
+          <div class="field name">${header.fullName || ""}</div>
+          <div class="field admit">${toISODate(header.dateAdmission || "")}</div>
+          <div class="field address">${header.address || ""}</div>
+          <div class="field pob">${header.placeOfBirth || ""}</div>
+          <div class="field entr">${header.entranceCredentials || ""}</div>
+          <div class="field dob">${toISODate(header.dateOfBirth || "")}</div>
+          <div class="field hs">${header.highSchool || ""}</div>
+          <div class="field dategrad">${toISODate(header.dateGraduated || "")}</div>
+          <div class="field program">${header.program || ""}</div>
+          <div class="field major">${header.major || ""}</div>
+          <div class="field grad">${toISODate(header.dateGraduated || "")}</div>
           <div class="field issued">${toISODate(new Date())}</div>
         `
-        : `<div class="field name">${p.fullName || ""}</div>`;
+        : `<div class="field name">${header.fullName || ""}</div>`;
       return `
       <div class="page ${first ? "first" : "other"}" style="background-image:url('${bg}');">
         ${absFields}
@@ -299,7 +366,7 @@ export async function renderTorFromPayload({
               .map(
                 (r) => `
                 <tr>
-                  <td class="td-term"><span class="term-wrap"><div>${r.semester || ""}</div><div class="ay">${r.ay || ""}</div></span></td>
+                  <td class="td-term">${r.termHtml ? `<span class="term-wrap">${r.termHtml}</span>` : ""}</td>
                   <td class="td-code">${r.subjectCode}</td>
                   <td class="td-subj"><span class="twolines">${r.subjectDescription}</span></td>
                   <td class="td-grade">${r.finalGrade}</td>
@@ -314,11 +381,8 @@ export async function renderTorFromPayload({
     })
     .join("")}
 </div>`;
-
   mount.innerHTML = html;
-  // allow layout to flush
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-
   return mount.querySelectorAll(".page").length || 0;
 }
 

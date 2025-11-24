@@ -79,7 +79,7 @@ export default function IssuerProfile() {
         <Card.Header className="bg-light"><strong>Issuer Details</strong></Card.Header>
         <Card.Body>
           <Row className="mb-3">
-            <Col md={4} className="text-muted">Issuer DID / Public Address</Col>
+            <Col md={4} className="text-muted">Polygon Blockchain Address</Col>
             <Col md={8} className="d-flex align-items-center gap-2">
               <span style={{ ...mono, wordBreak: 'break-all' }}>{ISSUER_DID || '—'}</span>
               {!!ISSUER_DID && (
@@ -154,10 +154,8 @@ export default function IssuerProfile() {
       {/* Note card */}
       <Card>
         <Card.Body className="text-muted">
-          This page is read-only. Values are sourced from your <span style={mono}>.env.local</span>:
-          <div className="mt-2" style={mono}>
-            VITE_ISSUER_NAME, VITE_ISSUER_DID, VITE_MERKLE_ANCHOR_ADDRESS, VITE_SMTP
-          </div>
+          This page is read-only. Values are sourced from your <span style={mono}>.env</span>
+
         </Card.Body>
       </Card>
     </section>

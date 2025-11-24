@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 
 // Shell
 import Layout from './components/layouts/Layout';
+import CashierLayout from './components/layouts/CashierLayout';   // 🔹 new
 import NotFound from './pages/NotFound';
 
 // Auth / Public
@@ -12,7 +13,7 @@ import Index from './pages/landing_portal';
 import Verification from './pages/landing_portal/sub/verification_portal';
 import Services from './pages/landing_portal/sub/services';
 
-// App pages
+// App pages (admin shell)
 import Dashboard from './pages/Dashboard';
 import AccountsAdminStaff from './pages/accounts/ManageAccounts';
 import VerifyUsers from './pages/accounts/VerifyUsers';
@@ -21,7 +22,7 @@ import AuditLogs from './pages/accounts/AuditLogs';
 import Students from './pages/students/Profiles';
 import CreateStudent from './pages/students/ManageStudent';
 
-import Issue from './pages/vc/issue';
+import Issue from './pages/vc/testing/issue';
 import Draft from './pages/vc/draft';
 import Request from './pages/vc/request';
 import Template from './pages/vc/sub/template';
@@ -36,7 +37,16 @@ import About from './pages/About';
 import IssuedVc from './pages/registry/issuedVc';
 import Profile from './pages/accounts/Profile';
 import Anchor  from './pages/registry/anchor';
-import Anchored from './pages/registry/anchored'
+import Anchored from './pages/registry/anchored';
+
+// 🔹 cashier-issued list page (new, see section 7)
+import CashierIssued from './pages/cashier/issued';
+import CashierDrafts from './pages/cashier/cashierDrafts';
+
+
+import TorDesigner from './pages/pdf/torDesigner'
+
+
 export default function AppRoutes() {
   return (
     <Routes>
@@ -44,17 +54,16 @@ export default function AppRoutes() {
       <Route path="/landing-page" element={<Index />} />
       <Route path="/landing-page/services" element={<Services />} />
 
-      {/* ✅ Portal without param (e.g. you show an instruction page) */}
       <Route path="/verification-portal" element={<Verification />} />
-      {/* ✅ Portal with :sessionId param (this is the one your mobile link hits) */}
       <Route path="/verification-portal/:sessionId" element={<Verification />} />
-      {/* ✅ Optional alias in case any links still use /verify/:sessionId */}
       <Route path="/verify/:sessionId" element={<Verification />} />
 
       <Route path="/login" element={<Login />} />
       <Route path="/loading" element={<Loading />} />
+      <Route path="/design/tor" element={<TorDesigner />} />
 
-      {/* Protected (wrapped by Layout via <Outlet />) */}
+
+      {/* Admin / staff shell */}
       <Route element={<Layout />}>
         {/* Home */}
         <Route index element={<Dashboard />} />
@@ -82,13 +91,18 @@ export default function AppRoutes() {
 
         {/* Registry / Utilities */}
         <Route path="registry/issuedVc" element={<IssuedVc />} />
-        <Route path="registry/anchor" element={<Anchor/>} />
-        <Route path="registry/anchored" element={<Anchored/>} />
-
+        <Route path="registry/anchor" element={<Anchor />} />
+        <Route path="registry/anchored" element={<Anchored />} />
 
         <Route path="IssuerProfile" element={<IssuerProfile />} />
         <Route path="blockchain-explorer" element={<Blockchain />} />
         <Route path="about" element={<About />} />
+      </Route>
+
+      {/* 🔹 Cashier shell (only Drafts + Issued) */}
+      <Route element={<CashierLayout />}>
+        <Route path="cashier/drafts" element={<CashierDrafts />} />
+        <Route path="cashier/issued" element={<CashierIssued />} />
       </Route>
 
       {/* Catch-all */}

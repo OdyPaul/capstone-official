@@ -3,10 +3,11 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import studentService from './studentService';
 
 const initialState = {
+  // List from Student_Data (passing students)
   students: [],
   allPrograms: [],
-  student: null,
-  tor: [],
+  student: null, // detail
+  tor: [],       // array of grade rows
 
   // Loading flags
   isLoadingList: false,
@@ -25,10 +26,13 @@ const initialState = {
   isSearchingPrograms: false,
   programSearchError: '',
 
+  // Generic flags
   isSuccess: false,
   isError: false,
   message: '',
 };
+
+// ---------- Thunks ----------
 
 // Create student
 export const createStudent = createAsyncThunk(
@@ -45,7 +49,7 @@ export const createStudent = createAsyncThunk(
   }
 );
 
-// Update student
+// Update Student_Data
 export const updateStudent = createAsyncThunk(
   'student/update',
   async ({ id, data }, thunkAPI) => {
@@ -73,7 +77,7 @@ export const getPassingStudents = createAsyncThunk(
   }
 );
 
-// TOR
+// TOR (grades)
 export const getStudentTor = createAsyncThunk(
   'student/getTor',
   async (id, thunkAPI) => {
@@ -81,7 +85,8 @@ export const getStudentTor = createAsyncThunk(
       const token = thunkAPI.getState().auth.user.token;
       return await studentService.getStudentTor(id, token);
     } catch (error) {
-      const message = error?.response?.data?.message || error?.message || String(error);
+      const message =
+        error?.response?.data?.message || error?.message || String(error);
       return thunkAPI.rejectWithValue(message);
     }
   }
@@ -95,7 +100,8 @@ export const getStudentById = createAsyncThunk(
       const token = thunkAPI.getState().auth.user.token;
       return await studentService.getStudentById(id, token);
     } catch (error) {
-      const message = error?.response?.data?.message || error?.message || String(error);
+      const message =
+        error?.response?.data?.message || error?.message || String(error);
       return thunkAPI.rejectWithValue(message);
     }
   }
@@ -133,7 +139,6 @@ export const studentSlice = createSlice({
       state.isCreating = false;
       state.createdStudent = null;
 
-      // clear program search
       state.programResults = [];
       state.isSearchingPrograms = false;
       state.programSearchError = '';
@@ -157,8 +162,6 @@ export const studentSlice = createSlice({
         state.isCreating = false;
         state.isSuccess = true;
         state.createdStudent = action.payload || null;
-        // Note: we don't push into `students` here because the list
-        // shows "passing" students only and may exclude new records.
       })
       .addCase(createStudent.rejected, (state, action) => {
         state.isCreating = false;
@@ -177,19 +180,18 @@ export const studentSlice = createSlice({
         state.isSuccess = true;
         const updated = action.payload;
 
-        // Patch detail view if it's the same student
         if (state.student && state.student._id === updated._id) {
           state.student = { ...state.student, ...updated };
         }
 
-        // Patch item inside the list (if present)
         state.students = (state.students || []).map((s) =>
           s._id === updated._id ? { ...s, ...updated } : s
         );
 
-        // Keep program list fresh
         if (updated?.program) {
-          state.allPrograms = Array.from(new Set([...(state.allPrograms || []), updated.program]));
+          state.allPrograms = Array.from(
+            new Set([...(state.allPrograms || []), updated.program])
+          );
         }
       })
       .addCase(updateStudent.rejected, (state, action) => {
@@ -207,13 +209,19 @@ export const studentSlice = createSlice({
         state.isSuccess = true;
         state.students = Array.isArray(action.payload) ? action.payload : [];
 
-        const newPrograms = (action.payload || []).map((s) => s.program).filter(Boolean);
-        state.allPrograms = Array.from(new Set([...(state.allPrograms || []), ...newPrograms]));
+        const newPrograms = (action.payload || [])
+          .map((s) => s.program)
+          .filter(Boolean);
+        state.allPrograms = Array.from(
+          new Set([...(state.allPrograms || []), ...newPrograms])
+        );
 
         const filters = action.meta.arg;
         try {
           localStorage.setItem('lastStudentFilters', JSON.stringify(filters || {}));
-        } catch {}
+        } catch {
+          // ignore
+        }
       })
       .addCase(getPassingStudents.rejected, (state, action) => {
         state.isLoadingList = false;
@@ -228,7 +236,7 @@ export const studentSlice = createSlice({
       .addCase(getStudentTor.fulfilled, (state, action) => {
         state.isLoadingTor = false;
         state.isSuccess = true;
-        state.tor = action.payload;
+        state.tor = Array.isArray(action.payload) ? action.payload : [];
       })
       .addCase(getStudentTor.rejected, (state, action) => {
         state.isLoadingTor = false;
@@ -258,12 +266,15 @@ export const studentSlice = createSlice({
       })
       .addCase(searchPrograms.fulfilled, (state, action) => {
         state.isSearchingPrograms = false;
-        state.programResults = Array.isArray(action.payload) ? action.payload : [];
+        state.programResults = Array.isArray(action.payload)
+          ? action.payload
+          : [];
       })
       .addCase(searchPrograms.rejected, (state, action) => {
         state.isSearchingPrograms = false;
         state.programResults = [];
-        state.programSearchError = action.payload || 'Failed to search programs';
+        state.programSearchError =
+          action.payload || 'Failed to search programs';
       });
   },
 });

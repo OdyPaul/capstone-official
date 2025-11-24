@@ -6,9 +6,25 @@ import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { NavLink } from "react-router-dom";
 import {
-  Card, Row, Col, Form, Button, Spinner, Alert, InputGroup, ListGroup
+  Card,
+  Row,
+  Col,
+  Form,
+  Button,
+  Spinner,
+  Alert,
+  InputGroup,
+  ListGroup,
+  Modal,
 } from "react-bootstrap";
-import { FaPlus, FaEdit, FaArrowLeft, FaCalendarAlt, FaSearch } from "react-icons/fa";
+import {
+  FaPlus,
+  FaEdit,
+  FaArrowLeft,
+  FaCalendarAlt,
+  FaSearch,
+  FaCheckCircle,
+} from "react-icons/fa";
 import { createStudent, searchPrograms } from "../../features/student/studentSlice";
 
 const GENDER_OPTIONS = ["", "male", "female", "other"];
@@ -17,19 +33,23 @@ const HONOR_OPTIONS = ["", "With Honors", "Cum Laude", "Magna Cum Laude", "Summa
 export default function ManageStudentsCreate() {
   const dispatch = useDispatch();
   const {
-    isCreating, createdStudent, isError, message,
-    programResults, isSearchingPrograms
-  } = useSelector(s => s.student);
-  const currentUser = useSelector(s => s.auth.user);
+    isCreating,
+    createdStudent,
+    isError,
+    message,
+    programResults,
+    isSearchingPrograms,
+  } = useSelector((s) => s.student);
+  const currentUser = useSelector((s) => s.auth.user);
 
   const canCreate = currentUser?.role === "superadmin" || currentUser?.role === "developer";
 
   // Names -> hidden fullName
   const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName]   = useState("");
+  const [lastName, setLastName] = useState("");
 
   // Structured address -> hidden address
-  const [street, setStreet]     = useState("");
+  const [street, setStreet] = useState("");
   const [barangay, setBarangay] = useState("");
   const [cityTown, setCityTown] = useState("");
   const [province, setProvince] = useState("");
@@ -40,7 +60,7 @@ export default function ManageStudentsCreate() {
     studentNumber: "",
     program: "",
     major: "",
-    curriculumId: "",   // 👈 hidden; set from selected program._id
+    curriculumId: "", // 👈 hidden; set from selected program._id
     gender: "",
     address: "",
     placeOfBirth: "",
@@ -50,7 +70,7 @@ export default function ManageStudentsCreate() {
     photoDataUrl: "",
   });
 
-  const [randomizeMissing, setRandomizeMissing] = useState(true);
+  const [randomizeMissing, setRandomizeMissing] = useState(false);
 
   // photo preview
   const [imgPreview, setImgPreview] = useState("");
@@ -66,17 +86,23 @@ export default function ManageStudentsCreate() {
 
   const [localMsg, setLocalMsg] = useState("");
 
+  // success modal
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+
   // Compose hidden fullName
   useEffect(() => {
     const composed = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
-    setForm(prev => ({ ...prev, fullName: composed }));
+    setForm((prev) => ({ ...prev, fullName: composed }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [firstName, lastName]);
 
   // Compose hidden address
   useEffect(() => {
-    const composed = [street, barangay, cityTown, province].map(v => v.trim()).filter(Boolean).join(", ");
-    setForm(prev => ({ ...prev, address: composed }));
+    const composed = [street, barangay, cityTown, province]
+      .map((v) => v.trim())
+      .filter(Boolean)
+      .join(", ");
+    setForm((prev) => ({ ...prev, address: composed }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [street, barangay, cityTown, province]);
 
@@ -105,16 +131,23 @@ export default function ManageStudentsCreate() {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
 
+  // Open success modal when a student is created
+  useEffect(() => {
+    if (createdStudent) {
+      setShowSuccessModal(true);
+    }
+  }, [createdStudent]);
+
   const onPickImage = () => fileInputRef.current?.click();
   const onImageChange = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
     if (!window.confirm(`Use "${f.name}" as student photo?`)) return;
     const reader = new FileReader();
-    reader.onload = ev => {
+    reader.onload = (ev) => {
       const dataUrl = ev.target.result;
       setImgPreview(dataUrl);
-      setForm(prev => ({ ...prev, photoDataUrl: String(dataUrl) }));
+      setForm((prev) => ({ ...prev, photoDataUrl: String(dataUrl) }));
     };
     reader.readAsDataURL(f);
   };
@@ -123,12 +156,15 @@ export default function ManageStudentsCreate() {
     const el = dateInputRef.current;
     if (!el) return;
     if (typeof el.showPicker === "function") el.showPicker();
-    else { el.focus(); el.click(); }
+    else {
+      el.focus();
+      el.click();
+    }
   };
 
   const chooseProgram = (p) => {
     const label = p?.program || p?.name || p?.code || p?.title || "";
-    setForm(prev => ({
+    setForm((prev) => ({
       ...prev,
       program: label,
       curriculumId: p?._id || p?.id || "",
@@ -150,20 +186,34 @@ export default function ManageStudentsCreate() {
     }
 
     const payload = { ...form, randomizeMissing };
-    Object.keys(payload).forEach(k => { if (payload[k] === "") delete payload[k]; });
+    Object.keys(payload).forEach((k) => {
+      if (payload[k] === "") delete payload[k];
+    });
 
     try {
       await dispatch(createStudent(payload)).unwrap();
       setLocalMsg("Student created successfully.");
 
       // reset (keep randomize)
-      setFirstName(""); setLastName("");
-      setStreet(""); setBarangay(""); setCityTown(""); setProvince("");
+      setFirstName("");
+      setLastName("");
+      setStreet("");
+      setBarangay("");
+      setCityTown("");
+      setProvince("");
       setForm({
-        fullName: "", studentNumber: "", program: "", major: "",
-        curriculumId: "", gender: "", address: "",
-        placeOfBirth: "", highSchool: "", honor: "",
-        dateGraduated: "", photoDataUrl: "",
+        fullName: "",
+        studentNumber: "",
+        program: "",
+        major: "",
+        curriculumId: "",
+        gender: "",
+        address: "",
+        placeOfBirth: "",
+        highSchool: "",
+        honor: "",
+        dateGraduated: "",
+        photoDataUrl: "",
       });
       setImgPreview("");
       if (dateInputRef.current) dateInputRef.current.value = "";
@@ -176,8 +226,37 @@ export default function ManageStudentsCreate() {
   return (
     <section className="container py-4">
       <Alert variant="warning" className="mb-3">
-        <strong>TESTING ONLY:</strong> This tool creates synthetic student records for development/testing.
+        <strong>TESTING ONLY:</strong> This tool creates synthetic student records for
+        development/testing.
       </Alert>
+
+      {/* Success Modal */}
+      <Modal
+        show={showSuccessModal}
+        onHide={() => setShowSuccessModal(false)}
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title className="d-flex align-items-center gap-2">
+            <FaCheckCircle className="text-success" />
+            Student Created
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {createdStudent?.fullName ? (
+            <>
+              Student <strong>{createdStudent.fullName}</strong> has been created successfully.
+            </>
+          ) : (
+            "Student has been created successfully."
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="success" onClick={() => setShowSuccessModal(false)}>
+            OK
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       <Card className="mb-4">
         <Card.Header className="bg-light">
@@ -263,7 +342,12 @@ export default function ManageStudentsCreate() {
                     <Form.Label>Student Number</Form.Label>
                     <Form.Control
                       value={form.studentNumber}
-                      onChange={e => setForm({ ...form, studentNumber: e.target.value })}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          studentNumber: e.target.value,
+                        })
+                      }
                       placeholder="Leave blank to auto-generate"
                     />
                   </Col>
@@ -274,14 +358,25 @@ export default function ManageStudentsCreate() {
                     <InputGroup>
                       <Form.Control
                         value={form.program}
-                        onChange={e => setForm(prev => ({ ...prev, program: e.target.value, curriculumId: "" }))}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            program: e.target.value,
+                            curriculumId: "",
+                          }))
+                        }
                         placeholder="e.g., BSIT, BSED ENGLISH"
                         onFocus={() => {
-                          if ((form.program || "").trim().length >= 2) setShowProgramDropdown(true);
+                          if ((form.program || "").trim().length >= 2)
+                            setShowProgramDropdown(true);
                         }}
                       />
                       <InputGroup.Text>
-                        {isSearchingPrograms ? <Spinner animation="border" size="sm" /> : <FaSearch />}
+                        {isSearchingPrograms ? (
+                          <Spinner animation="border" size="sm" />
+                        ) : (
+                          <FaSearch />
+                        )}
                       </InputGroup.Text>
                     </InputGroup>
 
@@ -289,14 +384,27 @@ export default function ManageStudentsCreate() {
                     {showProgramDropdown && (
                       <div
                         className="shadow border bg-white rounded mt-1"
-                        style={{ position: "absolute", zIndex: 10, width: "100%", maxHeight: 260, overflowY: "auto" }}
+                        style={{
+                          position: "absolute",
+                          zIndex: 10,
+                          width: "100%",
+                          maxHeight: 260,
+                          overflowY: "auto",
+                        }}
                       >
                         {programResults.length ? (
                           <ListGroup variant="flush">
                             {programResults.map((p) => {
                               const key = p._id || p.id || p.program || Math.random();
-                              const label = p.program || p.name || p.code || p.title || "(unnamed program)";
-                              const sub = p.curriculumYear ? `Curriculum ${p.curriculumYear}` : null;
+                              const label =
+                                p.program ||
+                                p.name ||
+                                p.code ||
+                                p.title ||
+                                "(unnamed program)";
+                              const sub = p.curriculumYear
+                                ? `Curriculum ${p.curriculumYear}`
+                                : null;
                               return (
                                 <ListGroup.Item
                                   key={key}
@@ -305,7 +413,9 @@ export default function ManageStudentsCreate() {
                                   onClick={() => chooseProgram(p)}
                                 >
                                   <div className="fw-semibold">{label}</div>
-                                  {sub ? <div className="small text-muted">{sub}</div> : null}
+                                  {sub ? (
+                                    <div className="small text-muted">{sub}</div>
+                                  ) : null}
                                 </ListGroup.Item>
                               );
                             })}
@@ -317,20 +427,28 @@ export default function ManageStudentsCreate() {
                     )}
 
                     {/* Hidden curriculumId tied to selected program */}
-                    <input type="hidden" value={form.curriculumId} readOnly aria-hidden="true" />
+                    <input
+                      type="hidden"
+                      value={form.curriculumId}
+                      readOnly
+                      aria-hidden="true"
+                    />
                   </Col>
 
                   <Col md={4}>
                     <Form.Label>Major</Form.Label>
                     <Form.Control
                       value={form.major}
-                      onChange={e => setForm({ ...form, major: e.target.value })}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          major: e.target.value,
+                        })
+                      }
                       placeholder="optional"
                     />
                   </Col>
                 </Row>
-
-                {/* Removed visible Curriculum input (kept hidden via curriculumId). */}
 
                 {/* Gender */}
                 <Row className="mb-3">
@@ -338,10 +456,17 @@ export default function ManageStudentsCreate() {
                     <Form.Label>Gender</Form.Label>
                     <Form.Select
                       value={form.gender}
-                      onChange={e => setForm({ ...form, gender: e.target.value })}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          gender: e.target.value,
+                        })
+                      }
                     >
-                      {GENDER_OPTIONS.map(g => (
-                        <option key={g || "empty"} value={g}>{g || "(unspecified)"}</option>
+                      {GENDER_OPTIONS.map((g) => (
+                        <option key={g || "empty"} value={g}>
+                          {g || "(unspecified)"}
+                        </option>
                       ))}
                     </Form.Select>
                   </Col>
@@ -353,7 +478,7 @@ export default function ManageStudentsCreate() {
                     <Form.Label>Street</Form.Label>
                     <Form.Control
                       value={street}
-                      onChange={e => setStreet(e.target.value)}
+                      onChange={(e) => setStreet(e.target.value)}
                       placeholder="e.g., 123 Mabini St."
                     />
                   </Col>
@@ -361,7 +486,7 @@ export default function ManageStudentsCreate() {
                     <Form.Label>Barangay</Form.Label>
                     <Form.Control
                       value={barangay}
-                      onChange={e => setBarangay(e.target.value)}
+                      onChange={(e) => setBarangay(e.target.value)}
                       placeholder="e.g., Brgy. 23-B"
                     />
                   </Col>
@@ -371,7 +496,7 @@ export default function ManageStudentsCreate() {
                     <Form.Label>City/Town</Form.Label>
                     <Form.Control
                       value={cityTown}
-                      onChange={e => setCityTown(e.target.value)}
+                      onChange={(e) => setCityTown(e.target.value)}
                       placeholder="e.g., Davao City"
                     />
                   </Col>
@@ -379,7 +504,7 @@ export default function ManageStudentsCreate() {
                     <Form.Label>Province</Form.Label>
                     <Form.Control
                       value={province}
-                      onChange={e => setProvince(e.target.value)}
+                      onChange={(e) => setProvince(e.target.value)}
                       placeholder="e.g., Davao del Sur"
                     />
                   </Col>
@@ -392,7 +517,12 @@ export default function ManageStudentsCreate() {
                     <Form.Label>Place of Birth</Form.Label>
                     <Form.Control
                       value={form.placeOfBirth}
-                      onChange={e => setForm({ ...form, placeOfBirth: e.target.value })}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          placeOfBirth: e.target.value,
+                        })
+                      }
                       placeholder="City, Province"
                     />
                   </Col>
@@ -400,7 +530,12 @@ export default function ManageStudentsCreate() {
                     <Form.Label>High School</Form.Label>
                     <Form.Control
                       value={form.highSchool}
-                      onChange={e => setForm({ ...form, highSchool: e.target.value })}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          highSchool: e.target.value,
+                        })
+                      }
                       placeholder="e.g., Davao City HS"
                     />
                   </Col>
@@ -412,10 +547,17 @@ export default function ManageStudentsCreate() {
                     <Form.Label>Honor</Form.Label>
                     <Form.Select
                       value={form.honor}
-                      onChange={e => setForm({ ...form, honor: e.target.value })}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          honor: e.target.value,
+                        })
+                      }
                     >
-                      {HONOR_OPTIONS.map(h => (
-                        <option key={h || "honor-empty"} value={h}>{h || "(none)"}</option>
+                      {HONOR_OPTIONS.map((h) => (
+                        <option key={h || "honor-empty"} value={h}>
+                          {h || "(none)"}
+                        </option>
                       ))}
                     </Form.Select>
                   </Col>
@@ -444,8 +586,19 @@ export default function ManageStudentsCreate() {
                       type="date"
                       ref={dateInputRef}
                       value={form.dateGraduated}
-                      onChange={e => setForm({ ...form, dateGraduated: e.target.value })}
-                      style={{ position: "absolute", opacity: 0, pointerEvents: "none", width: 0, height: 0 }}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          dateGraduated: e.target.value,
+                        })
+                      }
+                      style={{
+                        position: "absolute",
+                        opacity: 0,
+                        pointerEvents: "none",
+                        width: 0,
+                        height: 0,
+                      }}
                       tabIndex={-1}
                       aria-hidden="true"
                     />
@@ -453,8 +606,14 @@ export default function ManageStudentsCreate() {
                 </Row>
 
                 <div className="mt-3">
-                  <Button type="submit" variant="primary" disabled={isCreating || !canCreate}>
-                    {isCreating ? <Spinner animation="border" size="sm" className="me-2" /> : null}
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    disabled={isCreating || !canCreate}
+                  >
+                    {isCreating ? (
+                      <Spinner animation="border" size="sm" className="me-2" />
+                    ) : null}
                     Create Student
                   </Button>
                 </div>
@@ -462,22 +621,40 @@ export default function ManageStudentsCreate() {
 
               {/* RIGHT: photo */}
               <Col md={4}>
-                <div className="border rounded d-flex flex-column align-items-center justify-content-center p-3" style={{ minHeight: 260 }}>
+                <div
+                  className="border rounded d-flex flex-column align-items-center justify-content-center p-3"
+                  style={{ minHeight: 260 }}
+                >
                   {imgPreview ? (
                     <>
                       <img
                         src={imgPreview}
                         alt="Photo"
-                        style={{ width: 180, height: 180, objectFit: "cover", borderRadius: 8, border: "1px solid #eee" }}
+                        style={{
+                          width: 180,
+                          height: 180,
+                          objectFit: "cover",
+                          borderRadius: 8,
+                          border: "1px solid #eee",
+                        }}
                       />
-                      <Button type="button" variant="outline-secondary" className="mt-3" onClick={onPickImage}>
+                      <Button
+                        type="button"
+                        variant="outline-secondary"
+                        className="mt-3"
+                        onClick={onPickImage}
+                      >
                         <FaEdit className="me-2" /> Change
                       </Button>
                     </>
                   ) : (
                     <>
                       <div className="text-muted mb-3">No photo</div>
-                      <Button type="button" variant="outline-dark" onClick={onPickImage}>
+                      <Button
+                        type="button"
+                        variant="outline-dark"
+                        onClick={onPickImage}
+                      >
                         <FaPlus className="me-2" /> Add Photo
                       </Button>
                     </>

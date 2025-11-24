@@ -42,6 +42,22 @@ export default function Login() {
     }
   }, [isLoading]);
 
+    useEffect(() => {
+    if (isSuccess && user && !greeted.current) {
+      greeted.current = true;
+      toast.success("Welcome back!");
+
+      const role = String(user.role || "").toLowerCase();
+
+      // 🔹 cashier goes to cashier shell
+      if (role === "cashier") {
+        navigate("/cashier/drafts");
+      } else {
+        // existing behaviour for admin/superadmin/developer
+        navigate("/loading");
+      }
+    }
+  }, [isSuccess, user, navigate]);
   // Error toast (only for errors)
   useEffect(() => {
     if (isError) toast.error(message || "Login failed");
