@@ -147,8 +147,9 @@ export default function Login() {
               </button>
 
               <p className="helper">
-                <Link to="/landing-page">get back to home page?</Link>
+                <Link to="/reset-password">Forgot password?</Link>
               </p>
+
             </form>
           </div>
         </section>

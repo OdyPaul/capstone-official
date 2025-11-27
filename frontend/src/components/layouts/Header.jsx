@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { FaUser, FaBell, FaCog, FaUserCircle, FaLock } from "react-icons/fa";
 import { useSelector, useDispatch } from "react-redux";
 import { Modal } from "react-bootstrap";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation} from "react-router-dom";
 import { logout, reset } from "../../features/auth/authSlice";
 import { persistor } from "../../app/store";
 import "./css/header.css";
@@ -13,6 +13,7 @@ const Header = () => {
   const { user } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
+   const location = useLocation(); 
 
   const [showLogout, setShowLogout] = useState(false);
 
@@ -115,8 +116,11 @@ const Header = () => {
              <button
                className="dropdown-item d-flex align-items-center"
                type="button"
-               onClick={() => navigate('/accounts/profile')}
-             >
+              onClick={() => {
+                            const inCashierShell = location.pathname.startsWith('/cashier');
+                            navigate(inCashierShell ? '/cashier/profile' : '/accounts/profile');
+                          }}
+                        >
               <FaCog className="me-2" /> Profile Settings
             </button>
           </li>

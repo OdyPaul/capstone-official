@@ -11,14 +11,17 @@ export default function Blockchain() {
   const { user } = useSelector((s) => s.auth);
   const userId = user?._id || "me";
   const dayKey = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD
-  const BC_FLAG = `BC_ONCE_${userId}_${dayKey}`;  // "1" when fetched today
-  const BC_DATA = `BC_DATA_${userId}_${dayKey}`;  // stringified snapshot
+  const BC_FLAG = `BC_ONCE_${userId}_${dayKey}`; // "1" when fetched today
+  const BC_DATA = `BC_DATA_${userId}_${dayKey}`; // stringified snapshot
 
   // ------- YOUR ADDRESS -------
   const ADDRESS = "0x0f3E7b79FEcb121cfA43e4915a2692Cf0E642235";
 
   // ------- DEFAULT: Polygon Amoy (testnet) -------
   const NETWORK = "polygonAmoy"; // "polygonAmoy" | "polygon" | "ethereum"
+
+  // To keep Etherscan limits happy, we **do not** scan for contracts by default.
+  const ENABLE_CONTRACT_SCAN = false;
 
   const CONFIG = {
     ethereum: {
@@ -35,7 +38,11 @@ export default function Blockchain() {
       label: "Polygon PoS (Mainnet)",
       apiBase: "https://api.etherscan.io/v2/api",
       chainId: 137,
-      priceIdCandidates: ["polygon", "matic-network", "polygon-ecosystem-token"],
+      priceIdCandidates: [
+        "polygon",
+        "matic-network",
+        "polygon-ecosystem-token",
+      ],
       symbol: "POL",
       apiKey: "BV7A337W5HU47QMPJ9817NMNJI6WR5HBNC",
       explorer: (a) => `https://polygonscan.com/address/${a}`,
@@ -61,13 +68,17 @@ export default function Blockchain() {
   const [usedPriceId, setUsedPriceId] = useState(null);
   const [priceErr, setPriceErr] = useState(null);
   const [balance, setBalance] = useState(null);
-  const [contractInfo, setContractInfo] = useState({ address: null, active: null, tx: null });
+  const [contractInfo, setContractInfo] = useState({
+    address: null,
+    active: null,
+    tx: null,
+  });
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState("");
   const [history, setHistory] = useState([]); // [{t, safe, propose, fast}]
   const mountedRef = useRef(false);
 
-  // Respect API limit: NO polling by default
+  // No polling, **one fetch per day** (with manual refresh)
   const enablePolling = false;
   const refreshMs = 60_000;
 
@@ -94,21 +105,35 @@ export default function Blockchain() {
     };
   };
 
-  const fetchOracle = async () => {
-    const d = (await axios.get(buildUrl("gastracker", "gasoracle")))?.data;
-    if (d?.status === "1" && d.result) return d.result;
-    throw new Error(d?.message || d?.result || "Oracle NOTOK");
-  };
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  const fetchProxyGasPrice = async () => {
+  // ---- GAS: use **only** proxy/eth_gasPrice (1 Etherscan call) ----
+  const fetchGasTiers = async () => {
     const d = (await axios.get(buildUrl("proxy", "eth_gasPrice")))?.data;
+
+    // Etherscan-style error wrapper
+    if (d?.status === "0") {
+      const msg = d?.result || d?.message || "Proxy NOTOK";
+      // Typically: "Max calls per sec rate limit reached (3/sec)"
+      throw new Error(`Etherscan rate limit or proxy error: ${msg}`);
+    }
+
     const hexWei = d?.result;
     if (typeof hexWei !== "string" || !hexWei.startsWith("0x")) {
-      throw new Error(`Unexpected proxy response ${JSON.stringify(d || {})}`);
+      throw new Error(`Proxy unknown format: ${JSON.stringify(d || {})}`);
     }
     const gwei = parseInt(hexWei, 16) / 1e9;
-    if (!Number.isFinite(gwei)) throw new Error("Failed to parse gas price from proxy.");
-    return tiersFromSingleGwei(gwei);
+    if (!Number.isFinite(gwei)) {
+      throw new Error("Failed to parse gas price from proxy.");
+    }
+
+    // build our pseudo-oracle result
+    const tiers = tiersFromSingleGwei(gwei);
+    return {
+      LastBlock: null, // not used heavily; we skip to avoid extra calls
+      suggestBaseFee: null,
+      ...tiers,
+    };
   };
 
   // --- price (optional; skip on testnet) ---
@@ -136,28 +161,35 @@ export default function Blockchain() {
 
   const fetchBalance = async () => {
     const d = (
-      await axios.get(buildUrl("account", "balance", { address: ADDRESS, tag: "latest" }))
+      await axios.get(
+        buildUrl("account", "balance", { address: ADDRESS, tag: "latest" })
+      )
     )?.data;
     if (d?.status === "1") return weiToFloat(d.result, 18);
     throw new Error(d?.message || "Balance error");
   };
 
-  // ---- contract creation (receipt + code) ----
+  // ---- (Optional) contract creation – DISABLED by default ----
   const getReceiptContract = async (txhash) => {
     const r = (
-      await axios.get(buildUrl("proxy", "eth_getTransactionReceipt", { txhash }))
+      await axios.get(
+        buildUrl("proxy", "eth_getTransactionReceipt", { txhash })
+      )
     )?.data?.result;
-    return r?.contractAddress && r.contractAddress !== "0x" ? r.contractAddress : null;
+    return r?.contractAddress && r.contractAddress !== "0x"
+      ? r.contractAddress
+      : null;
   };
 
   const hasCode = async (addr) => {
     const code = (
-      await axios.get(buildUrl("proxy", "eth_getCode", { address: addr, tag: "latest" }))
+      await axios.get(
+        buildUrl("proxy", "eth_getCode", { address: addr, tag: "latest" })
+      )
     )?.data?.result;
     return !!code && code !== "0x";
   };
 
-  // Scan recent outbound txs; find first receipt with contractAddress
   const fetchLatestCreatedContractBy = async () => {
     const d = (
       await axios.get(
@@ -165,7 +197,7 @@ export default function Blockchain() {
           address: ADDRESS,
           sort: "desc",
           page: 1,
-          offset: 50,
+          offset: 20, // keep small
         })
       )
     )?.data;
@@ -178,9 +210,15 @@ export default function Blockchain() {
       (tx) => (tx.from || "").toLowerCase() === ADDRESS.toLowerCase()
     );
 
-    for (const tx of sent) {
+    // limit to first few tx to avoid spamming proxy
+    const maxScan = 3;
+    for (let i = 0; i < Math.min(maxScan, sent.length); i++) {
+      const tx = sent[i];
+      // tiny delay between calls for safety
+      await sleep(350);
       const caddr = await getReceiptContract(tx.hash);
       if (caddr) {
+        await sleep(350);
         const active = await hasCode(caddr);
         return { address: caddr, active, tx: tx.hash };
       }
@@ -188,17 +226,19 @@ export default function Blockchain() {
     return { address: null, active: null, tx: null };
   };
 
-  // Extra fallback: verify a known contract (optional)
   const confirmKnownContract = async (contractAddress) => {
     const d = (
       await axios.get(
-        buildUrl("contract", "getcontractcreation", { contractaddresses: contractAddress })
+        buildUrl("contract", "getcontractcreation", {
+          contractaddresses: contractAddress,
+        })
       )
     )?.data;
     if (d?.status === "1" && Array.isArray(d.result) && d.result[0]) {
+      const active = await hasCode(contractAddress);
       return {
         address: contractAddress,
-        active: await hasCode(contractAddress),
+        active,
         tx: d.result[0].txHash || null,
       };
     }
@@ -232,41 +272,48 @@ export default function Blockchain() {
   };
 
   // ------- one-shot fetch (and then cache) -------
-    const fetchOnce = async () => {
+  const fetchOnce = async () => {
     try {
       setErrMsg("");
       setPriceErr(null);
 
-      const gasPromise = (async () => {
-        try {
-          return await fetchOracle();
-        } catch (e1) {
-          try {
-            return await fetchProxyGasPrice();
-          } catch (e2) {
-            throw new Error(`${e1.message} | ${e2.message}`);
-          }
-        }
-      })();
+      // 1) Gas (single Etherscan call via proxy)
+      const gasRes = await fetchGasTiers();
 
-      const [gasRes, priceRes, balRes, createdRes] = await Promise.all([
-        gasPromise,
-        fetchPricePhp(),
-        fetchBalance().catch(() => null),
-        fetchLatestCreatedContractBy().catch(() => ({
-          address: null,
-          active: null,
-          tx: null,
-        })),
-      ]);
+      // 2) Start Coingecko in parallel (if mainnet)
+      const pricePromise = fetchPricePhp();
 
-      let finalCreated = createdRes;
-      if (!createdRes.address) {
-        const hinted = await confirmKnownContract(
-          "0x0ac96734b9a2a368D8EE3f6CF9BC27EC373f195f"
-        ).catch(() => null);
-        if (hinted) finalCreated = hinted;
+      // 3) Balance (second Etherscan call)
+      let balRes = null;
+      try {
+        await sleep(350); // small delay between API calls
+        balRes = await fetchBalance();
+      } catch {
+        balRes = null;
       }
+
+      // 4) (Optional) contract scanning – disabled by default
+      let createdRes = {
+        address: null,
+        active: null,
+        tx: null,
+      };
+      if (ENABLE_CONTRACT_SCAN) {
+        try {
+          await sleep(350);
+          createdRes = await fetchLatestCreatedContractBy();
+          if (!createdRes.address) {
+            const hinted = await confirmKnownContract(
+              "0x0ac96734b9a2a368D8EE3f6CF9BC27EC373f195f"
+            ).catch(() => null);
+            if (hinted) createdRes = hinted;
+          }
+        } catch {
+          createdRes = { address: null, active: null, tx: null };
+        }
+      }
+
+      const priceRes = await pricePromise;
 
       // --- base state updates ---
       setGasData(gasRes);
@@ -283,9 +330,9 @@ export default function Blockchain() {
         );
       }
       if (balRes !== null) setBalance(balRes);
-      setContractInfo(finalCreated);
+      setContractInfo(createdRes);
 
-      // --- history point + snapshot (✅ this is the important part) ---
+      // --- history point + snapshot ---
       const safe = parseFloat(gasRes.SafeGasPrice);
       const propose = parseFloat(gasRes.ProposeGasPrice);
       const fast = parseFloat(gasRes.FastGasPrice);
@@ -307,14 +354,21 @@ export default function Blockchain() {
           tokenPricePhp: priceRes?.php ?? null,
           usedPriceId: priceRes?.idUsed ?? null,
           balance: balRes ?? null,
-          contractInfo: finalCreated,
+          contractInfo: createdRes,
           history: updated,
         });
 
         return updated;
       });
     } catch (err) {
-      setErrMsg(err?.message || "Failed to load data.");
+      const msg = String(err?.message || "");
+      if (/rate limit/i.test(msg)) {
+        setErrMsg(
+          "Rate limited by Etherscan – please wait a few seconds and hit Refresh."
+        );
+      } else {
+        setErrMsg(msg || "Failed to load data.");
+      }
     }
   };
 
@@ -331,7 +385,9 @@ export default function Blockchain() {
         setTokenPricePhp(snap.tokenPricePhp ?? null);
         setUsedPriceId(snap.usedPriceId ?? null);
         setBalance(snap.balance ?? null);
-        setContractInfo(snap.contractInfo ?? { address: null, active: null, tx: null });
+        setContractInfo(
+          snap.contractInfo ?? { address: null, active: null, tx: null }
+        );
         setHistory(Array.isArray(snap.history) ? snap.history : []);
         setLoading(false);
       } else {
@@ -340,8 +396,13 @@ export default function Blockchain() {
       }
     })();
 
-    // optional polling (disabled by default)
-    const id = enablePolling ? setInterval(() => mountedRef.current && fetchOnce(), refreshMs) : null;
+    const id = enablePolling
+      ? setInterval(
+          () => mountedRef.current && fetchOnce(),
+          refreshMs
+        )
+      : null;
+
     return () => {
       mountedRef.current = false;
       if (id) clearInterval(id);
@@ -367,14 +428,32 @@ export default function Blockchain() {
     [history]
   );
 
-
   const chartOptions = useMemo(
     () => ({
-      chart: { id: "gas-line", animations: { easing: "easeinout", dynamicAnimation: { speed: 400 } }, toolbar: { show: false } },
+      chart: {
+        id: "gas-line",
+        animations: {
+          easing: "easeinout",
+          dynamicAnimation: { speed: 400 },
+        },
+        toolbar: { show: false },
+      },
       stroke: { curve: "smooth", width: 3 },
       xaxis: { type: "datetime", labels: { datetimeUTC: false } },
-      yaxis: { title: { text: "Gwei" }, labels: { formatter: (v) => (Number.isFinite(v) ? v.toFixed(0) : v) } },
-      tooltip: { x: { format: "HH:mm" }, y: { formatter: (v) => `${v?.toFixed?.(3) ?? v} Gwei` } },
+      yaxis: {
+        title: { text: "Gwei" },
+        labels: {
+          formatter: (v) =>
+            Number.isFinite(v) ? v.toFixed(0) : v,
+        },
+      },
+      tooltip: {
+        x: { format: "HH:mm" },
+        y: {
+          formatter: (v) =>
+            `${v?.toFixed?.(3) ?? v} Gwei`,
+        },
+      },
       legend: { position: "top" },
       noData: { text: "Collecting gas data..." },
     }),
@@ -382,7 +461,7 @@ export default function Blockchain() {
   );
 
   // ------- early returns -------
-  if (loading) {
+  if (loading && !gasData) {
     return (
       <div className="d-flex justify-content-center my-5">
         <div className="spinner-border text-primary" role="status">
@@ -394,9 +473,20 @@ export default function Blockchain() {
 
   if (!gasData) {
     return (
-      <div className="alert alert-danger mt-3">
-        <strong>Error loading data:</strong> {errMsg || "Unknown error."}
-      </div>
+      <section className="header">
+        <div className="container mt-4">
+          <div className="alert alert-danger mt-3">
+            <strong>Error loading data:</strong>{" "}
+            {errMsg || "Unknown error."}
+          </div>
+          <button
+            className="btn btn-outline-primary mt-3"
+            onClick={handleRefresh}
+          >
+            Try again
+          </button>
+        </div>
+      </section>
     );
   }
 
@@ -404,7 +494,7 @@ export default function Blockchain() {
   const gweiToNative = (gwei, gasLimit = 21000) => {
     const g = parseFloat(gwei);
     if (!Number.isFinite(g)) return null;
-    return (g * gasLimit) / 1e9; // in POL/MATIC
+    return (g * gasLimit) / 1e9; // in POL/MATIC/ETH
   };
   const gweiToPhp = (gwei, gasLimit = 21000) => {
     if (tokenPricePhp == null) return null;
@@ -413,9 +503,13 @@ export default function Blockchain() {
     return (coin * tokenPricePhp).toFixed(4);
   };
 
-  const baseFee = gasData.suggestBaseFee ? parseFloat(gasData.suggestBaseFee) : null;
+  const baseFee = gasData.suggestBaseFee
+    ? parseFloat(gasData.suggestBaseFee)
+    : null;
   const priority = (tier) =>
-    baseFee !== null ? Math.max(0, parseFloat(tier) - baseFee).toFixed(3) : null;
+    baseFee !== null
+      ? Math.max(0, parseFloat(tier) - baseFee).toFixed(3)
+      : null;
 
   const safeFeeNative = gweiToNative(gasData.SafeGasPrice);
   const fastFeeNative = gweiToNative(gasData.ProposeGasPrice);
@@ -425,7 +519,10 @@ export default function Blockchain() {
   const fastFeePhp = gweiToPhp(gasData.ProposeGasPrice);
   const rapidFeePhp = gweiToPhp(gasData.FastGasPrice);
 
-  const fiat = (val) => `₱${Number(val).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  const fiat = (val) =>
+    `₱${Number(val).toLocaleString(undefined, {
+      maximumFractionDigits: 2,
+    })}`;
 
   return (
     <section className="header">
@@ -434,36 +531,77 @@ export default function Blockchain() {
         <div className="d-flex flex-wrap align-items-center justify-content-between p-3 rounded bg-light border">
           <div className="d-flex align-items-center gap-3">
             <Badge bg="dark">{NET.label}</Badge>
-            <Badge bg="secondary">Etherscan V2 (chainid: {NET.chainId})</Badge>
+            <Badge bg="secondary">
+              Etherscan V2 (chainid: {NET.chainId})
+            </Badge>
           </div>
           <div className="text-end">
-            <div className="fw-semibold text-muted" style={{ fontSize: 13 }}>
+            <div
+              className="fw-semibold text-muted"
+              style={{ fontSize: 13 }}
+            >
               Current Gas (Avg)
             </div>
-            <div className="fw-bold" style={{ fontSize: 32, lineHeight: 1 }}>
-              {parseFloat(gasData.ProposeGasPrice).toFixed(3)} <span className="text-muted">Gwei</span>
+            <div
+              className="fw-bold"
+              style={{ fontSize: 32, lineHeight: 1 }}
+            >
+              {parseFloat(
+                gasData.ProposeGasPrice
+              ).toFixed(3)}{" "}
+              <span className="text-muted">Gwei</span>
             </div>
             {gasData.LastBlock && (
-              <div className="text-muted" style={{ fontSize: 12 }}>
+              <div
+                className="text-muted"
+                style={{ fontSize: 12 }}
+              >
                 Last Block: {gasData.LastBlock}
               </div>
             )}
           </div>
         </div>
 
+        {/* Error strip if present */}
+        {errMsg && (
+          <div className="alert alert-warning mt-3">
+            {errMsg}
+          </div>
+        )}
+
         {/* Price strip */}
         <div className="alert alert-info mt-3 d-flex flex-column flex-md-row gap-3 justify-content-between align-items-center">
           <div>
             <strong>{NET.symbol} Price (PHP):</strong>{" "}
-            {tokenPricePhp != null ? fiat(tokenPricePhp) : <span className="text-muted">testnet / unavailable</span>}
-            {usedPriceId && tokenPricePhp != null && (
-              <span className="text-muted ms-2 small">via CG id: {usedPriceId}</span>
+            {tokenPricePhp != null ? (
+              fiat(tokenPricePhp)
+            ) : (
+              <span className="text-muted">
+                testnet / unavailable
+              </span>
             )}
-            {priceErr && <span className="text-muted ms-2 small">({priceErr})</span>}
+            {usedPriceId && tokenPricePhp != null && (
+              <span className="text-muted ms-2 small">
+                via CG id: {usedPriceId}
+              </span>
+            )}
+            {priceErr && (
+              <span className="text-muted ms-2 small">
+                ({priceErr})
+              </span>
+            )}
           </div>
           <div className="d-flex align-items-center gap-2">
-            <span className="text-muted">Refresh: {enablePolling ? `${Math.round(refreshMs / 1000)}s` : "off"}</span>
-            <button className="btn btn-sm btn-outline-primary" onClick={handleRefresh}>
+            <span className="text-muted">
+              Refresh:{" "}
+              {enablePolling
+                ? `${Math.round(refreshMs / 1000)}s`
+                : "off"}
+            </span>
+            <button
+              className="btn btn-sm btn-outline-primary"
+              onClick={handleRefresh}
+            >
               Refresh now
             </button>
           </div>
@@ -474,17 +612,29 @@ export default function Blockchain() {
           <div className="col-md-4 mb-3">
             <Card className="text-center shadow-sm h-100">
               <Card.Body>
-                <FaSmile size={28} className="mb-2 text-primary" />
+                <FaSmile
+                  size={28}
+                  className="mb-2 text-primary"
+                />
                 <div className="fw-semibold">Standard</div>
-                <div className="display-6">{parseFloat(gasData.SafeGasPrice).toFixed(3)} Gwei</div>
+                <div className="display-6">
+                  {parseFloat(
+                    gasData.SafeGasPrice
+                  ).toFixed(3)}{" "}
+                  Gwei
+                </div>
                 {baseFee !== null && (
                   <div className="small text-muted">
-                    Base: {baseFee.toFixed(3)} • Priority: {priority(gasData.SafeGasPrice)} Gwei
+                    Base: {baseFee.toFixed(3)} • Priority:{" "}
+                    {priority(gasData.SafeGasPrice)} Gwei
                   </div>
                 )}
                 <div className="mt-2">
-                  ≈ {safeFeeNative?.toFixed?.(6)} {NET.symbol}
-                  {safeFeePhp && <> • {fiat(safeFeePhp)}</>}
+                  ≈ {safeFeeNative?.toFixed?.(6)}{" "}
+                  {NET.symbol}
+                  {safeFeePhp && (
+                    <> • {fiat(safeFeePhp)}</>
+                  )}
                 </div>
               </Card.Body>
             </Card>
@@ -493,17 +643,30 @@ export default function Blockchain() {
           <div className="col-md-4 mb-3">
             <Card className="text-center shadow-sm h-100">
               <Card.Body>
-                <FaSmileBeam size={28} className="mb-2 text-success" />
+                <FaSmileBeam
+                  size={28}
+                  className="mb-2 text-success"
+                />
                 <div className="fw-semibold">Fast</div>
-                <div className="display-6">{parseFloat(gasData.ProposeGasPrice).toFixed(3)} Gwei</div>
+                <div className="display-6">
+                  {parseFloat(
+                    gasData.ProposeGasPrice
+                  ).toFixed(3)}{" "}
+                  Gwei
+                </div>
                 {baseFee !== null && (
                   <div className="small text-muted">
-                    Base: {baseFee.toFixed(3)} • Priority: {priority(gasData.ProposeGasPrice)} Gwei
+                    Base: {baseFee.toFixed(3)} • Priority:{" "}
+                    {priority(gasData.ProposeGasPrice)}{" "}
+                    Gwei
                   </div>
                 )}
                 <div className="mt-2">
-                  ≈ {fastFeeNative?.toFixed?.(6)} {NET.symbol}
-                  {fastFeePhp && <> • {fiat(fastFeePhp)}</>}
+                  ≈ {fastFeeNative?.toFixed?.(6)}{" "}
+                  {NET.symbol}
+                  {fastFeePhp && (
+                    <> • {fiat(fastFeePhp)}</>
+                  )}
                 </div>
               </Card.Body>
             </Card>
@@ -512,17 +675,30 @@ export default function Blockchain() {
           <div className="col-md-4 mb-3">
             <Card className="text-center shadow-sm h-100">
               <Card.Body>
-                <FaGrinStars size={28} className="mb-2 text-warning" />
+                <FaGrinStars
+                  size={28}
+                  className="mb-2 text-warning"
+                />
                 <div className="fw-semibold">Rapid</div>
-                <div className="display-6">{parseFloat(gasData.FastGasPrice).toFixed(3)} Gwei</div>
+                <div className="display-6">
+                  {parseFloat(
+                    gasData.FastGasPrice
+                  ).toFixed(3)}{" "}
+                  Gwei
+                </div>
                 {baseFee !== null && (
                   <div className="small text-muted">
-                    Base: {baseFee.toFixed(3)} • Priority: {priority(gasData.FastGasPrice)} Gwei
+                    Base: {baseFee.toFixed(3)} • Priority:{" "}
+                    {priority(gasData.FastGasPrice)}{" "}
+                    Gwei
                   </div>
                 )}
                 <div className="mt-2">
-                  ≈ {rapidFeeNative?.toFixed?.(6)} {NET.symbol}
-                  {rapidFeePhp && <> • {fiat(rapidFeePhp)}</>}
+                  ≈ {rapidFeeNative?.toFixed?.(6)}{" "}
+                  {NET.symbol}
+                  {rapidFeePhp && (
+                    <> • {fiat(rapidFeePhp)}</>
+                  )}
                 </div>
               </Card.Body>
             </Card>
@@ -535,16 +711,26 @@ export default function Blockchain() {
           <div className="col-lg-4 mb-3">
             <Card className="shadow-sm h-100">
               <Card.Body>
-                <div className="fw-semibold mb-2">Wallet Overview</div>
+                <div className="fw-semibold mb-2">
+                  Wallet Overview
+                </div>
 
-                <div className="small text-muted">Address</div>
+                <div className="small text-muted">
+                  Address
+                </div>
                 <div className="mb-2">
-                  <a href={NET.explorer(ADDRESS)} target="_blank" rel="noreferrer">
+                  <a
+                    href={NET.explorer(ADDRESS)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     {short(ADDRESS)}
                   </a>
                 </div>
 
-                <div className="small text-muted">Balance</div>
+                <div className="small text-muted">
+                  Balance
+                </div>
                 <div className="mb-2">
                   {balance !== null ? (
                     <>
@@ -552,7 +738,12 @@ export default function Blockchain() {
                         {balance.toFixed(6)} {NET.symbol}
                       </span>
                       {tokenPricePhp != null && (
-                        <div className="text-muted">≈ ₱{(balance * tokenPricePhp).toFixed(2)}</div>
+                        <div className="text-muted">
+                          ≈ ₱
+                          {(balance * tokenPricePhp).toFixed(
+                            2
+                          )}
+                        </div>
                       )}
                     </>
                   ) : (
@@ -560,26 +751,58 @@ export default function Blockchain() {
                   )}
                 </div>
 
-                <div className="small text-muted">Latest Contract Deployed</div>
-                {contractInfo.address ? (
-                  <div className="mt-1">
-                    <a href={NET.explorer(contractInfo.address)} target="_blank" rel="noreferrer">
-                      {short(contractInfo.address)}
-                    </a>
-                    <Badge bg={contractInfo.active ? "success" : "secondary"} className="ms-2">
-                      {contractInfo.active ? "Active" : "Unknown"}
-                    </Badge>
-                    {contractInfo.tx && (
-                      <div className="small mt-1">
-                        Tx:{" "}
-                        <a href={NET.explorerTx(contractInfo.tx)} target="_blank" rel="noreferrer">
-                          {short(contractInfo.tx)}
-                        </a>
-                      </div>
-                    )}
-                  </div>
+                <div className="small text-muted">
+                  Latest Contract Deployed
+                </div>
+                {ENABLE_CONTRACT_SCAN ? (
+                  contractInfo.address ? (
+                    <div className="mt-1">
+                      <a
+                        href={NET.explorer(
+                          contractInfo.address
+                        )}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {short(contractInfo.address)}
+                      </a>
+                      <Badge
+                        bg={
+                          contractInfo.active
+                            ? "success"
+                            : "secondary"
+                        }
+                        className="ms-2"
+                      >
+                        {contractInfo.active
+                          ? "Active"
+                          : "Unknown"}
+                      </Badge>
+                      {contractInfo.tx && (
+                        <div className="small mt-1">
+                          Tx:{" "}
+                          <a
+                            href={NET.explorerTx(
+                              contractInfo.tx
+                            )}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {short(contractInfo.tx)}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-muted">
+                      No contract creation found
+                    </div>
+                  )
                 ) : (
-                  <div className="mt-1 text-muted">No contract creation found</div>
+                  <div className="mt-1 text-muted">
+                    Contract scan disabled to respect API
+                    rate limits.
+                  </div>
                 )}
               </Card.Body>
             </Card>
@@ -590,10 +813,19 @@ export default function Blockchain() {
             <Card className="shadow-sm h-100">
               <Card.Body>
                 <div className="d-flex align-items-center justify-content-between mb-2">
-                  <div className="fw-semibold">Historical Gas Prices</div>
-                  <div className="text-muted small">Source: etherscan.io (multichain)</div>
+                  <div className="fw-semibold">
+                    Historical Gas Prices
+                  </div>
+                  <div className="text-muted small">
+                    Source: etherscan.io (multichain)
+                  </div>
                 </div>
-                <Chart type="line" height={320} series={chartSeries} options={chartOptions} />
+                <Chart
+                  type="line"
+                  height={320}
+                  series={chartSeries}
+                  options={chartOptions}
+                />
               </Card.Body>
             </Card>
           </div>

@@ -101,7 +101,7 @@ function ImportSpreadsheetModal({
 
   // ---- mappers -----------------------------------------------------
 
-  const mapStudentRows = (rawStudents) =>
+    const mapStudentRows = (rawStudents) =>
     rawStudents.map((row) => {
       const studentNumber =
         String(
@@ -131,6 +131,19 @@ function ImportSpreadsheetModal({
         if (!Number.isNaN(d.getTime())) admitDate = ymdUTC(d);
       }
 
+      // ✅ NEW: parse Date of Birth
+      const dobRaw =
+        row.DateOfBirth ||
+        row["Date Of Birth"] ||
+        row["Date of Birth"] ||
+        row.dateOfBirth ||
+        "";
+      let dateOfBirth = "";
+      if (dobRaw) {
+        const d = new Date(dobRaw);
+        if (!Number.isNaN(d.getTime())) dateOfBirth = ymdUTC(d);
+      }
+
       return {
         studentNumber,
         lastName: row.LastName || row.lastName || "",
@@ -149,6 +162,7 @@ function ImportSpreadsheetModal({
         dateAdmitted: admitDate,
         dateGraduated: gradDate,
         placeOfBirth: row.PlaceOfBirth || "",
+        dateOfBirth,
         collegeAwardHonor: row.College_AwardHonor || "",
         entranceCredentials:
           row.EntranceData_AdmissionCredential ||
@@ -161,6 +175,7 @@ function ImportSpreadsheetModal({
         email: row.Email || row.email || "",
       };
     });
+
 
   const mapGradeRows = (rawGrades) =>
     rawGrades.map((row) => {
@@ -674,6 +689,13 @@ function RecipientDetailsModal({ show, onHide, recipient }) {
               <Form.Label>Date admitted</Form.Label>
               <Form.Control value={s.dateAdmission || s.dateAdmitted || ""} readOnly />
             </Col>
+             <Col md={6}>
+              <Form.Label>Date admitted</Form.Label>
+              <Form.Control
+                value={s.dateAdmission || s.dateAdmitted || ""}
+                readOnly
+              />
+            </Col>
             <Col md={6}>
               <Form.Label>Date graduated</Form.Label>
               <Form.Control
@@ -681,6 +703,15 @@ function RecipientDetailsModal({ show, onHide, recipient }) {
                 readOnly
               />
             </Col>
+         
+            <Col md={6}>
+              <Form.Label>Date of birth</Form.Label>
+              <Form.Control
+                value={toDateOnly(s.dateOfBirth || "")}
+                readOnly  
+              />
+            </Col>
+
             <Col md={6}>
               <Form.Label>Major</Form.Label>
               <Form.Control value={s.major || ""} readOnly />
@@ -1535,7 +1566,6 @@ export default function IssueCredentials() {
     const rawPurpose = purpose === "other" ? otherPurpose : purpose;
     const normalizedPurpose = normalizePurpose(rawPurpose);
 
-    // minimal per-recipient data for the backend
     const recipientsPayload = recipients
       .filter((r) => r.studentNumber && r.studentNumber.trim() !== "")
       .map((r) => ({
@@ -1544,7 +1574,13 @@ export default function IssueCredentials() {
         fullName: r.fullName || "",
         program: r.program || "",
         dateGraduated: r.dateGraduated || "",
+        // ✅ NEW: send DOB if we have it
+        dateOfBirth:
+          r.dateOfBirth ||
+          r.studentData?.dateOfBirth ||
+          "",
       }));
+
 
     if (!recipientsPayload.length) {
       alert("All recipients are missing student numbers.");

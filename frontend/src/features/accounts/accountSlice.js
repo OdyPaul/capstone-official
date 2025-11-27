@@ -9,9 +9,11 @@ const initialState = {
   message: '',
 };
 
-export const fetchAccounts = createAsyncThunk('accounts/list', async (_, thunkAPI) => {
-  try { return await accountService.list(); }
-  catch (e) {
+// 🔹 kind can be 'web' (default), 'mobile', or 'all'
+export const fetchAccounts = createAsyncThunk('accounts/list', async (kind = 'web', thunkAPI) => {
+  try {
+    return await accountService.list(kind);
+  } catch (e) {
     const m = e.response?.data?.message || e.message || 'Failed to load accounts';
     return thunkAPI.rejectWithValue(m);
   }

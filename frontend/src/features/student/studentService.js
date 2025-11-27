@@ -80,6 +80,23 @@ const updateStudent = async (id, payload, token) => {
   return data;
 };
 
+
+//search student
+const searchStudents = async (filters = {}, token) => {
+  const config = {
+    headers: { Authorization: `Bearer ${token}` },
+    params: filters,
+    paramsSerializer: (params) =>
+      qs.stringify(params, { arrayFormat: "repeat" }),
+  };
+
+  const { data } = await axios.get(`${webBase}/students/search`, config);
+
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
+};
+
 const studentService = {
   getPassingStudents,
   getStudentById,
@@ -87,6 +104,7 @@ const studentService = {
   createStudent,
   searchPrograms,
   updateStudent,
+  searchStudents
 };
 
 export default studentService;

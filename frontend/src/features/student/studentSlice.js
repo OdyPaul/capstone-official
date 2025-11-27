@@ -30,6 +30,9 @@ const initialState = {
   isSuccess: false,
   isError: false,
   message: '',
+
+  //student
+    searchResults: [],
 };
 
 // ---------- Thunks ----------
@@ -63,7 +66,24 @@ export const updateStudent = createAsyncThunk(
     }
   }
 );
-
+//search student:
+export const searchStudents = createAsyncThunk(
+  "student/searchStudents",
+  async (filters = {}, thunkAPI) => {
+    try {
+      const token = thunkAPI.getState().auth.user?.token;
+      return await studentService.searchStudents(filters, token);
+    } catch (error) {
+      const message =
+        (error.response &&
+          error.response.data &&
+          (error.response.data.message || error.response.data.error)) ||
+        error.message ||
+        error.toString();
+      return thunkAPI.rejectWithValue(message);
+    }
+  }
+);
 // Passing students
 export const getPassingStudents = createAsyncThunk(
   'student/getPassingStudents',
@@ -148,6 +168,12 @@ export const studentSlice = createSlice({
       state.isSuccess = false;
       state.isError = false;
       state.message = '';
+
+      
+    },
+      clearSearchResults: (state) => {
+      state.searchResults = [];
+      state.searchError = null;
     },
   },
   extraReducers: (builder) => {
@@ -275,9 +301,26 @@ export const studentSlice = createSlice({
         state.programResults = [];
         state.programSearchError =
           action.payload || 'Failed to search programs';
+      })
+        //search student
+        .addCase(searchStudents.pending, (state) => {
+        state.isSearching = true;
+        state.searchError = null;
+      })
+      .addCase(searchStudents.fulfilled, (state, action) => {
+        state.isSearching = false;
+        state.searchResults = action.payload || [];
+      })
+      .addCase(searchStudents.rejected, (state, action) => {
+        state.isSearching = false;
+        state.searchResults = [];
+        state.searchError =
+          action.payload ||
+          action.error?.message ||
+          "Failed to search students";
       });
   },
 });
 
-export const { reset } = studentSlice.actions;
+export const { reset,clearSearchResults  } = studentSlice.actions;
 export default studentSlice.reducer;

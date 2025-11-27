@@ -12,11 +12,14 @@ import Loading from './Loading';
 import Index from './pages/landing_portal';
 import Verification from './pages/landing_portal/sub/verification_portal';
 import Services from './pages/landing_portal/sub/services';
+import ResetPassword from './pages/ResetPassword';
 
 // App pages (admin shell)
 import Dashboard from './pages/Dashboard';
 import AccountsAdminStaff from './pages/accounts/ManageAccounts';
 import VerifyUsers from './pages/accounts/VerifyUsers';
+import MobileUsers from './pages/accounts/mobileUsers';
+
 import AuditLogs from './pages/accounts/AuditLogs';
 
 import Students from './pages/students/Profiles';
@@ -45,7 +48,7 @@ import CashierDrafts from './pages/cashier/cashierDrafts';
 
 
 import TorDesigner from './pages/pdf/torDesigner'
-
+import DiplomaDesigner from "./pages/pdf/diplomaDesigner"
 
 export default function AppRoutes() {
   return (
@@ -59,8 +62,11 @@ export default function AppRoutes() {
       <Route path="/verify/:sessionId" element={<Verification />} />
 
       <Route path="/login" element={<Login />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/loading" element={<Loading />} />
       <Route path="/design/tor" element={<TorDesigner />} />
+      <Route path="/design/diploma" element={<DiplomaDesigner />} />
+
 
 
       {/* Admin / staff shell */}
@@ -74,6 +80,8 @@ export default function AppRoutes() {
         <Route path="accounts/audit-logs" element={<AuditLogs />} />
         <Route path="accounts/verify-users" element={<VerifyUsers />} />
         <Route path="accounts/profile" element={<Profile />} />
+        <Route path="accounts/mobile-users" element={<MobileUsers />} />
+
 
         {/* Students */}
         <Route path="students/student-profiles" element={<Students />} />
@@ -103,6 +111,7 @@ export default function AppRoutes() {
       <Route element={<CashierLayout />}>
         <Route path="cashier/drafts" element={<CashierDrafts />} />
         <Route path="cashier/issued" element={<CashierIssued />} />
+         <Route path="cashier/profile" element={<Profile />} />
       </Route>
 
       {/* Catch-all */}

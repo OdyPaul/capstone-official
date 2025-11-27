@@ -21,14 +21,12 @@ import {
   FaPlus,
   FaEdit,
   FaArrowLeft,
-  FaCalendarAlt,
   FaSearch,
   FaCheckCircle,
 } from "react-icons/fa";
 import { createStudent, searchPrograms } from "../../features/student/studentSlice";
 
 const GENDER_OPTIONS = ["", "male", "female", "other"];
-const HONOR_OPTIONS = ["", "With Honors", "Cum Laude", "Magna Cum Laude", "Summa Cum Laude"];
 
 export default function ManageStudentsCreate() {
   const dispatch = useDispatch();
@@ -42,10 +40,12 @@ export default function ManageStudentsCreate() {
   } = useSelector((s) => s.student);
   const currentUser = useSelector((s) => s.auth.user);
 
-  const canCreate = currentUser?.role === "superadmin" || currentUser?.role === "developer";
+  const canCreate =
+    currentUser?.role === "superadmin" || currentUser?.role === "developer";
 
   // Names -> hidden fullName
   const [firstName, setFirstName] = useState("");
+  const [middleInitial, setMiddleInitial] = useState("");
   const [lastName, setLastName] = useState("");
 
   // Structured address -> hidden address
@@ -65,8 +65,8 @@ export default function ManageStudentsCreate() {
     address: "",
     placeOfBirth: "",
     highSchool: "",
-    honor: "",
-    dateGraduated: "",
+    dateOfBirth: "",
+    graduationYear: "",
     photoDataUrl: "",
   });
 
@@ -75,9 +75,6 @@ export default function ManageStudentsCreate() {
   // photo preview
   const [imgPreview, setImgPreview] = useState("");
   const fileInputRef = useRef(null);
-
-  // date picker
-  const dateInputRef = useRef(null);
 
   // program dropdown
   const [showProgramDropdown, setShowProgramDropdown] = useState(false);
@@ -89,12 +86,14 @@ export default function ManageStudentsCreate() {
   // success modal
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // Compose hidden fullName
+  // Compose hidden fullName (First + MI + Last)
   useEffect(() => {
-    const composed = [firstName.trim(), lastName.trim()].filter(Boolean).join(" ");
+    const composed = [firstName.trim(), middleInitial.trim(), lastName.trim()]
+      .filter(Boolean)
+      .join(" ");
     setForm((prev) => ({ ...prev, fullName: composed }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [firstName, lastName]);
+  }, [firstName, middleInitial, lastName]);
 
   // Compose hidden address
   useEffect(() => {
@@ -118,14 +117,16 @@ export default function ManageStudentsCreate() {
       dispatch(searchPrograms({ q, limit: 12 }));
       setShowProgramDropdown(true);
     }, 250);
-    return () => programSearchTimer.current && clearTimeout(programSearchTimer.current);
+    return () =>
+      programSearchTimer.current && clearTimeout(programSearchTimer.current);
   }, [dispatch, form.program]);
 
   // Close dropdown on outside click
   useEffect(() => {
     const onDocClick = (e) => {
       if (!programBoxRef.current) return;
-      if (!programBoxRef.current.contains(e.target)) setShowProgramDropdown(false);
+      if (!programBoxRef.current.contains(e.target))
+        setShowProgramDropdown(false);
     };
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
@@ -152,16 +153,6 @@ export default function ManageStudentsCreate() {
     reader.readAsDataURL(f);
   };
 
-  const triggerDatePicker = () => {
-    const el = dateInputRef.current;
-    if (!el) return;
-    if (typeof el.showPicker === "function") el.showPicker();
-    else {
-      el.focus();
-      el.click();
-    }
-  };
-
   const chooseProgram = (p) => {
     const label = p?.program || p?.name || p?.code || p?.title || "";
     setForm((prev) => ({
@@ -185,9 +176,17 @@ export default function ManageStudentsCreate() {
       return;
     }
 
-    const payload = { ...form, randomizeMissing };
+    const payload = {
+      ...form,
+      randomizeMissing,
+      firstName: firstName.trim() || undefined,
+      lastName: lastName.trim() || undefined,
+      middleName: middleInitial.trim() || undefined,
+    };
+
+    // Strip empty strings/undefined
     Object.keys(payload).forEach((k) => {
-      if (payload[k] === "") delete payload[k];
+      if (payload[k] === "" || payload[k] === undefined) delete payload[k];
     });
 
     try {
@@ -196,6 +195,7 @@ export default function ManageStudentsCreate() {
 
       // reset (keep randomize)
       setFirstName("");
+      setMiddleInitial("");
       setLastName("");
       setStreet("");
       setBarangay("");
@@ -211,12 +211,11 @@ export default function ManageStudentsCreate() {
         address: "",
         placeOfBirth: "",
         highSchool: "",
-        honor: "",
-        dateGraduated: "",
+        dateOfBirth: "",
+        graduationYear: "",
         photoDataUrl: "",
       });
       setImgPreview("");
-      if (dateInputRef.current) dateInputRef.current.value = "";
       setShowProgramDropdown(false);
     } catch (err) {
       setLocalMsg(err || "Failed to create student.");
@@ -315,12 +314,20 @@ export default function ManageStudentsCreate() {
               <Col md={8}>
                 {/* Names */}
                 <Row className="mb-3">
-                  <Col md={6}>
+                  <Col md={4}>
                     <Form.Label>First Name *</Form.Label>
                     <Form.Control
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       placeholder="e.g., Juan"
+                    />
+                  </Col>
+                  <Col md={2}>
+                    <Form.Label>Middle Initial</Form.Label>
+                    <Form.Control
+                      value={middleInitial}
+                      onChange={(e) => setMiddleInitial(e.target.value)}
+                      placeholder="e.g., A."
                     />
                   </Col>
                   <Col md={6}>
@@ -509,7 +516,12 @@ export default function ManageStudentsCreate() {
                     />
                   </Col>
                 </Row>
-                <input type="hidden" value={form.address} readOnly aria-hidden="true" />
+                <input
+                  type="hidden"
+                  value={form.address}
+                  readOnly
+                  aria-hidden="true"
+                />
 
                 {/* Place of Birth + High School */}
                 <Row className="mb-3">
@@ -541,66 +553,39 @@ export default function ManageStudentsCreate() {
                   </Col>
                 </Row>
 
-                {/* Honor */}
+                {/* Date of Birth */}
                 <Row className="mb-3">
                   <Col md={6}>
-                    <Form.Label>Honor</Form.Label>
-                    <Form.Select
-                      value={form.honor}
+                    <Form.Label>Date of Birth</Form.Label>
+                    <Form.Control
+                      type="date"
+                      value={form.dateOfBirth}
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          honor: e.target.value,
+                          dateOfBirth: e.target.value,
                         })
                       }
-                    >
-                      {HONOR_OPTIONS.map((h) => (
-                        <option key={h || "honor-empty"} value={h}>
-                          {h || "(none)"}
-                        </option>
-                      ))}
-                    </Form.Select>
+                    />
                   </Col>
                 </Row>
 
-                {/* Date Graduated (icon opens native picker) */}
+                {/* Graduation Year */}
                 <Row className="mb-3">
                   <Col md={6}>
-                    <Form.Label>Date Graduated</Form.Label>
-                    <InputGroup>
-                      <Form.Control
-                        placeholder="YYYY-MM-DD"
-                        value={form.dateGraduated}
-                        readOnly
-                      />
-                      <Button
-                        variant="outline-secondary"
-                        onClick={triggerDatePicker}
-                        title="Open calendar"
-                        type="button"
-                      >
-                        <FaCalendarAlt />
-                      </Button>
-                    </InputGroup>
-                    <input
-                      type="date"
-                      ref={dateInputRef}
-                      value={form.dateGraduated}
+                    <Form.Label>Graduation Year</Form.Label>
+                    <Form.Control
+                      type="number"
+                      min="1900"
+                      max="2100"
+                      placeholder="e.g., 2024"
+                      value={form.graduationYear}
                       onChange={(e) =>
                         setForm({
                           ...form,
-                          dateGraduated: e.target.value,
+                          graduationYear: e.target.value,
                         })
                       }
-                      style={{
-                        position: "absolute",
-                        opacity: 0,
-                        pointerEvents: "none",
-                        width: 0,
-                        height: 0,
-                      }}
-                      tabIndex={-1}
-                      aria-hidden="true"
                     />
                   </Col>
                 </Row>

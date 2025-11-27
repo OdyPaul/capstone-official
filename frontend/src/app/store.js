@@ -11,6 +11,8 @@ import requestsReducer from "../features/request/requestsSlice";
 import anchorReducer from "../features/anchor/anchorSlice"
 import issueReducer from '../features/issuance/issueSlice'
 import paymentReducer from '../features/payments/paymentSlice'
+import verifyReducer from "../features/verify/verifySlice";
+import mobileAccountReducer from "../features/accounts/mobileAccountSlice";
 import {
   persistStore,
   persistReducer,
@@ -34,17 +36,18 @@ const persistedUserReducer = persistReducer(userPersistConfig, userReducer);
 
 export const store = configureStore({
   reducer: {
-    auth: persistedAuthReducer,   // ✅ keep login/session across refresh
-    student: studentReducer,      // ❌ always fresh
-    users: persistedUserReducer,  // ✅ optional: persist user list if needed
-    vc: vcReducer,  
+    auth: persistedAuthReducer,   
+    student: studentReducer,     
+    users: persistedUserReducer,  
     template:templateReducer,  
     issuance: issuanceReducer,  
     accounts: accountReducer,   
     requests:requestsReducer,
     anchor: anchorReducer,
     issue: issueReducer,
-    payment: paymentReducer
+    payment: paymentReducer,
+    verify: verifyReducer,
+    mobileAccounts:mobileAccountReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

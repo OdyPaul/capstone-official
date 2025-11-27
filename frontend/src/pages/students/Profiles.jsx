@@ -1,4 +1,4 @@
-// src/pages/StudentProfiles.jsx
+// src/pages/StudentProfiles.jsx 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -163,17 +163,50 @@ const DEFAULTS = {
 };
 const PAGE_SIZES = [10, 20, 50, 100];
 
+function normalizeDateInput(v) {
+  if (!v) return null;
+
+  // Already a Date instance
+  if (v instanceof Date) return v;
+
+  // Mongo-style extended JSON: { $date: "..." } or { $date: { $numberLong: "..." } }
+  if (typeof v === "object" && v.$date) {
+    const inner = v.$date;
+
+    if (inner instanceof Date) return inner;
+
+    if (typeof inner === "string" || typeof inner === "number") {
+      return new Date(inner);
+    }
+
+    if (inner && typeof inner === "object" && inner.$numberLong) {
+      return new Date(Number(inner.$numberLong));
+    }
+
+    // Fallback: try Date on whatever it is
+    return new Date(inner);
+  }
+
+  // Plain ISO string or timestamp
+  if (typeof v === "string" || typeof v === "number") {
+    return new Date(v);
+  }
+
+  return null;
+}
+
 function toDateOnly(v) {
-  if (!v) return "—";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "—" : d.toISOString().slice(0, 10);
+  const d = normalizeDateInput(v);
+  if (!d || Number.isNaN(d.getTime())) return "—";
+  return d.toISOString().slice(0, 10);
 }
 
 function toInputDate(v) {
-  if (!v) return "";
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+  const d = normalizeDateInput(v);
+  if (!d || Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
 }
+
 
 function normalizeGender(val) {
   const g = String(val || "").toLowerCase().trim();
@@ -206,7 +239,11 @@ function buildPatch(current, baseline) {
     // field-specific normalization
     if (key === "gender") cur = normalizeGender(cur);
     if (key === "gwa") cur = cur === "" ? undefined : Number(cur);
-    if (key === "dateAdmission" || key === "dateGraduated")
+    if (
+      key === "dateAdmission" ||
+      key === "dateGraduated" ||
+      key === "dateOfBirth"
+    )
       cur = cur || undefined;
 
     // do not send empties / undefined / null
@@ -265,6 +302,7 @@ export default function StudentProfiles() {
     placeOfBirth: "",
     highSchool: "",
     honor: "",
+    dateOfBirth: "",
     dateAdmission: "",
     dateGraduated: "",
     gwa: "",
@@ -542,6 +580,7 @@ export default function StudentProfiles() {
       placeOfBirth: row.placeOfBirth || "",
       highSchool: row.highSchool || "",
       honor: row.honor || "",
+      dateOfBirth: toInputDate(row.dateOfBirth) || "",
       dateAdmission: toInputDate(row.dateAdmission) || "",
       dateGraduated: toInputDate(row.dateGraduated) || "",
       gwa: (row.gwa ?? "") === "" ? "" : String(row.gwa),
@@ -576,6 +615,7 @@ export default function StudentProfiles() {
       placeOfBirth: studentDetail.placeOfBirth || "",
       highSchool: studentDetail.highSchool || "",
       honor: studentDetail.honor || "",
+      dateOfBirth: toInputDate(studentDetail.dateOfBirth) || "",
       dateAdmission: toInputDate(studentDetail.dateAdmission) || "",
       dateGraduated: toInputDate(studentDetail.dateGraduated) || "",
       gwa: (studentDetail.gwa ?? "") === "" ? "" : String(studentDetail.gwa),
@@ -758,7 +798,6 @@ export default function StudentProfiles() {
                   <th>Full Name</th>
                   <th>Student No.</th>
                   <th>Program</th>
-                  <th>GWA</th>
                   <th>Date Graduated</th>
                   <th style={{ width: 140 }}>Actions</th>
                 </tr>
@@ -766,7 +805,7 @@ export default function StudentProfiles() {
               <tbody>
                 {isLoadingList ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-5">
+                    <td colSpan={6} className="text-center py-5">
                       <Spinner animation="border" className="me-2" />
                       Loading…
                     </td>
@@ -793,9 +832,6 @@ export default function StudentProfiles() {
                       <td>{s.fullName || "—"}</td>
                       <td>{s.studentNumber || "—"}</td>
                       <td>{s.program || "—"}</td>
-                      <td>
-                        {s.gwa !== undefined && s.gwa !== null ? s.gwa : "—"}
-                      </td>
                       <td>{toDateOnly(s.dateGraduated)}</td>
                       <td>
                         <div className="d-flex align-items-center gap-1">
@@ -823,7 +859,7 @@ export default function StudentProfiles() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={7} className="text-center py-4">
+                    <td colSpan={6} className="text-center py-4">
                       No students found.
                     </td>
                   </tr>
@@ -1018,14 +1054,9 @@ export default function StudentProfiles() {
 
                 <Row className="mb-3">
                   <Col md={6}>
-                    <Form.Label>GWA</Form.Label>
+                    <Form.Label>Date of Birth</Form.Label>
                     <Form.Control
-                      value={
-                        studentDetail.gwa !== undefined &&
-                        studentDetail.gwa !== null
-                          ? studentDetail.gwa
-                          : ""
-                      }
+                      value={toDateOnly(studentDetail.dateOfBirth)}
                       disabled
                       readOnly
                     />
@@ -1230,17 +1261,16 @@ export default function StudentProfiles() {
 
                 <Row className="mb-3">
                   <Col md={6}>
-                    <Form.Label>GWA</Form.Label>
+                    <Form.Label>Date of Birth</Form.Label>
                     <Form.Control
-                      type="number"
-                      step="0.01"
-                      min="1.00"
-                      max="5.00"
-                      value={editForm.gwa}
+                      type="date"
+                      value={editForm.dateOfBirth}
                       onChange={(e) =>
-                        setEditForm({ ...editForm, gwa: e.target.value })
+                        setEditForm({
+                          ...editForm,
+                          dateOfBirth: e.target.value,
+                        })
                       }
-                      placeholder="e.g., 2.25"
                     />
                   </Col>
                 </Row>

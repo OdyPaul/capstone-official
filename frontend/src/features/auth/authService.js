@@ -54,9 +54,31 @@ const logout = async () => {
   }
 };
 
+const requestPasswordReset = async (email) => {
+  const { data } = await axios.post(`${API_URL}/api/password/forgot`, { email });
+  return data; // { success: true, debugCode? }
+};
+
+const verifyPasswordReset = async (email, code) => {
+  const { data } = await axios.post(`${API_URL}/api/password/verify`, { email, code });
+  return data; // { success: true, resetSession }
+};
+
+const completePasswordReset = async ({ email, resetSession, newPassword }) => {
+  const { data } = await axios.post(`${API_URL}/api/password/reset`, {
+    email,
+    resetSession,
+    newPassword,
+  });
+  return data; // { success: true }
+};
+
 export default {
   register,
   login,
   logout,
   getToken,
+  requestPasswordReset,
+  verifyPasswordReset,
+  completePasswordReset,
 };

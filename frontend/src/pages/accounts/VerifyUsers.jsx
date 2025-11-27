@@ -1,7 +1,6 @@
 // src/pages/accounts/VerifyUsers.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useSelector } from "react-redux";
-import axios from "axios";
+import React, { useEffect, useRef, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import {
   Card,
   Row,
@@ -23,10 +22,24 @@ import {
   FaTimes,
   FaLink,
 } from "react-icons/fa";
-import { API_URL } from "../../../config";
-
-// ---------- Config ----------
-const VPATH = `${API_URL}/api/verification-request`; // server mounts this in backend/server.js
+import {
+  fetchVerifyList,
+  fetchVerifyById,
+  verifyVerifyRequest,
+  rejectVerifyRequest,
+  selectVerifyList,
+  selectVerifyTotal,
+  selectVerifyListLoading,
+  selectVerifyError,
+  selectVerifyCurrent,
+  selectVerifyCurrentLoading,
+  selectVerifyActing,
+} from "../../features/verify/verifySlice";
+import {
+  searchStudents as searchStudentsThunk,
+  clearSearchResults,
+} from "../../features/student/studentSlice";
+import { NavLink } from "react-router-dom";
 
 // ---------- Defaults for "Reset" ----------
 const DEFAULTS = {
@@ -66,30 +79,55 @@ function nameSimilarity(a = "", b = "") {
   return inter / union;
 }
 
+// Turn "First Middle Last" into "First M. Last" for display/search
+
+const toMiddleInitialName = (fullName = "") => {
+  const parts = String(fullName || "").trim().split(/\s+/);
+  if (parts.length < 3) return fullName; // no clear middle name
+
+  const first = parts[0];
+  const last = parts[parts.length - 1];
+  const middle = parts.slice(1, -1).join(" "); // supports multi-word middle names
+  const initial = middle ? middle[0].toUpperCase() : "";
+
+  // 👈 no "." here, just the letter
+  return initial ? `${first} ${initial} ${last}` : fullName;
+};
+
+
+
 export default function VerifyUsers() {
+  const dispatch = useDispatch();
   const { user } = useSelector((s) => s.auth);
   const token = user?.token;
+
+  // from verify slice
+  const items = useSelector(selectVerifyList);
+  const totalRemote = useSelector(selectVerifyTotal);
+  const loading = useSelector(selectVerifyListLoading);
+  const { isError, message: errMessage } = useSelector(selectVerifyError);
+  const current = useSelector(selectVerifyCurrent);
+  const loadingCurrent = useSelector(selectVerifyCurrentLoading);
+  const acting = useSelector(selectVerifyActing);
+
+  // from student slice (search results)
+  const {
+    searchResults: stuResults,
+    isSearching: stuLoading,
+  } = useSelector((s) => s.student);
 
   // toolbar / list state
   const [q, setQ] = useState(DEFAULTS.q);
   const [status, setStatus] = useState(DEFAULTS.status); // UI: Unverified (maps to pending)
-  const [items, setItems] = useState([]);
-  const [totalRemote, setTotalRemote] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState("");
   const [page, setPage] = useState(DEFAULTS.page);
   const [limit, setLimit] = useState(DEFAULTS.limit);
   const [showSettings, setShowSettings] = useState(false);
 
   // modal state
   const [showVerify, setShowVerify] = useState(false);
-  const [current, setCurrent] = useState(null);
-  const [loadingCurrent, setLoadingCurrent] = useState(false);
 
   // student search (right card)
   const [stuQ, setStuQ] = useState("");
-  const [stuLoading, setStuLoading] = useState(false);
-  const [stuResults, setStuResults] = useState([]);
   const [pickedStudent, setPickedStudent] = useState(null);
   const [stuViewMode, setStuViewMode] = useState("table"); // "table" | "detail"
   const stuSearchRef = useRef(null);
@@ -97,64 +135,29 @@ export default function VerifyUsers() {
   // reject modal
   const [showReject, setShowReject] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
-  const [acting, setActing] = useState(false);
 
-  const authz = useMemo(
-    () => ({ headers: { Authorization: `Bearer ${token}` } }),
-    [token]
-  );
-
-  const apiStatus = (ui) => (ui === "unverified" ? "pending" : ui); // UI → API
-
-  // fetch list (admin) — server-side pagination + filtering
-  const fetchRequests = async () => {
+  // fetch list (admin) — server-side pagination + filtering via Redux thunk
+  const fetchRequests = () => {
     if (!token) return;
-    setLoading(true);
-    setErr("");
-    try {
-      const res = await axios.get(VPATH, {
-        ...authz,
-        params: {
-          page,
-          limit,
-          q: q.trim() || undefined,
-          status: (status || "all") === "all" ? "all" : apiStatus(status),
-        },
-      });
-      const { items: rows, total } = res.data || {};
-      setItems(Array.isArray(rows) ? rows : []);
-      setTotalRemote(Number.isFinite(total) ? total : 0);
-    } catch (e) {
-      setItems([]);
-      setTotalRemote(0);
-      setErr(
-        e?.response?.data?.message || e?.message || "Failed to load requests"
-      );
-    } finally {
-      setLoading(false);
-    }
+    dispatch(
+      fetchVerifyList({
+        page,
+        limit,
+        status,
+        q: q.trim(),
+      })
+    );
   };
 
   // open one request
-  const openVerify = async (reqId) => {
+  const openVerify = (reqId) => {
     setShowVerify(true);
     setPickedStudent(null);
     setStuQ("");
-    setStuResults([]);
     setStuViewMode("table");
-    setLoadingCurrent(true);
-    try {
-      const res = await axios.get(`${VPATH}/${reqId}`, authz);
-      setCurrent(res.data);
-    } catch (e) {
-      setCurrent(null);
-      setErr(
-        e?.response?.data?.message || e?.message || "Failed to open request"
-      );
-    } finally {
-      setLoadingCurrent(false);
-      setTimeout(() => stuSearchRef.current?.focus(), 350);
-    }
+    dispatch(clearSearchResults());
+    dispatch(fetchVerifyById(reqId));
+    setTimeout(() => stuSearchRef.current?.focus(), 350);
   };
 
   // totals/paging
@@ -172,106 +175,125 @@ export default function VerifyUsers() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, page, limit, q, status]);
 
-  // student search
-  const searchStudents = async (qq) => {
+  // student search via Redux thunk
+  const runStudentSearch = async (qq) => {
     if (!token) return [];
     const query = String(qq || "").trim();
     if (!query) {
-      setStuResults([]);
+      dispatch(clearSearchResults());
       return [];
     }
-    setStuLoading(true);
     try {
-      const res = await axios.get(`${API_URL}/api/web/student/search`, {
-        ...authz,
-        params: { q: query },
-      });
-      const arr = Array.isArray(res.data) ? res.data : [];
-      setStuResults(arr);
+      const results = await dispatch(
+        searchStudentsThunk({ q: query })
+      ).unwrap();
       setStuViewMode("table");
-      return arr;
+      return Array.isArray(results) ? results : [];
     } catch {
-      setStuResults([]);
-      setStuViewMode("table");
+      // error is kept in studentSlice.searchError
       return [];
-    } finally {
-      setStuLoading(false);
     }
   };
 
   const autoMatch = async () => {
-    if (!current) return;
-    const full =
-      current?.personal?.fullName || current?.user?.fullName || "";
-    if (!full) return;
-    setStuQ(full);
-    const arr = await searchStudents(full);
-    const scored = (arr || []).map((s) => {
-      let score = nameSimilarity(full, s?.fullName || "");
-      const gradYearReq = (current?.education?.graduationDate || "").slice(
-        0,
-        4
-      );
-      const gradYearStu = s?.dateGraduated
-        ? new Date(s.dateGraduated).getFullYear()
-        : null;
-      if (
-        gradYearReq &&
-        gradYearStu &&
-        String(gradYearStu) === String(gradYearReq)
-      )
-        score += 0.15;
-      return { s, score };
-    });
-    scored.sort((a, b) => b.score - a.score);
-    const top = scored[0]?.s || null;
-    if (top) {
-      setPickedStudent(top);
-      setStuViewMode("detail");
+  if (!current) return;
+
+  // Raw full name from the mobile request / user
+  const rawFull =
+    current?.personal?.fullName || current?.user?.fullName || "";
+  if (!rawFull.trim()) return;
+
+  // Normalize to "First M. Last" because that's how names are stored in the DB
+  const searchName = toMiddleInitialName(rawFull);
+
+  // Show this normalized name in the search box
+  setStuQ(searchName);
+
+  // Run the student search with the normalized name
+  const arr = await runStudentSearch(searchName);
+  if (!Array.isArray(arr) || !arr.length) return;
+
+  const scored = arr.map((s) => {
+    // Compare using the normalized name vs student fullName
+    let score = nameSimilarity(searchName, s?.fullName || "");
+
+    // Slight boost if graduation year matches
+    const gradYearReq = (current?.education?.graduationDate || "").slice(0, 4);
+    const gradYearStu = s?.dateGraduated
+      ? new Date(s.dateGraduated).getFullYear()
+      : null;
+
+    if (
+      gradYearReq &&
+      gradYearStu &&
+      String(gradYearStu) === String(gradYearReq)
+    ) {
+      score += 0.15;
     }
-  };
+
+    return { s, score };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored[0]?.s || null;
+
+  if (top) {
+    setPickedStudent(top);
+    setStuViewMode("detail");
+  }
+};
+
 
   // actions
   const doVerify = async () => {
     if (!current?._id || !pickedStudent?._id) return;
-    setActing(true);
     try {
-      const r = await axios.post(
-        `${VPATH}/${current._id}/verify`,
-        { studentId: pickedStudent._id },
-        authz
-      );
-      if (r?.status === 202) alert("Verification queued.");
+      const res = await dispatch(
+        verifyVerifyRequest({
+          id: current._id,
+          studentId: pickedStudent._id,
+        })
+      ).unwrap();
+
+      if (res?.api?.queued) {
+        alert("Verification queued.");
+      } else {
+        alert("Verification submitted.");
+      }
+
       setShowVerify(false);
-      setCurrent(null);
       setPickedStudent(null);
+      dispatch(clearSearchResults());
+      // slice will optimistically update status
     } catch (e) {
-      alert(e?.response?.data?.message || e?.message || "Failed to verify");
-    } finally {
-      setActing(false);
-      // state changes trigger refetch via useEffect
+      alert(e || "Failed to verify");
     }
   };
 
   const doReject = async () => {
     if (!current?._id || !rejectReason.trim()) return;
-    setActing(true);
     try {
-      const r = await axios.post(
-        `${VPATH}/${current._id}/reject`,
-        { reason: rejectReason.trim() },
-        authz
-      );
-      if (r?.status === 202) alert("Rejection queued.");
+      const res = await dispatch(
+        rejectVerifyRequest({
+          id: current._id,
+          reason: rejectReason.trim(),
+        })
+      ).unwrap();
+
+      if (res?.api?.queued) {
+        alert("Rejection queued.");
+      } else {
+        alert("Rejection submitted.");
+      }
+
       setShowReject(false);
       setShowVerify(false);
-      setCurrent(null);
       setPickedStudent(null);
       setRejectReason("");
+      dispatch(clearSearchResults());
+      // slice will optimistically update status
     } catch (e) {
-      alert(e?.response?.data?.message || e?.message || "Failed to reject");
-    } finally {
-      setActing(false);
+      alert(e || "Failed to reject");
     }
   };
 
@@ -294,6 +316,17 @@ export default function VerifyUsers() {
       {/* Title row */}
       <div className="d-flex align-items-center justify-content-between mb-2">
         <h1 className="h4 mb-0">Verify Users (Mobile Requests)</h1>
+
+          <Button
+          as={NavLink}
+          to="/accounts/mobile-users"
+          variant="outline-primary"
+          className="d-flex align-items-center"
+          style={{ textDecoration: "none" }}
+        >
+          <FaEye className="me-2" />
+          View Mobile Accounts
+        </Button>
       </div>
 
       {/* Search row with Refresh + Settings on the same row */}
@@ -373,9 +406,9 @@ export default function VerifyUsers() {
         <Badge bg="secondary">Total: {total}</Badge>
       </div>
 
-      {err && (
+      {isError && errMessage && (
         <div className="alert alert-danger">
-          <strong>Error:</strong> {err}
+          <strong>Error:</strong> {errMessage}
         </div>
       )}
 
@@ -600,7 +633,7 @@ export default function VerifyUsers() {
                       <Col md={6}>
                         <div className="text-muted small">Full Name</div>
                         <div className="fw-semibold">
-                          {safe(current?.personal?.fullName)}
+                          {safe(toMiddleInitialName(current?.personal?.fullName))}
                         </div>
                       </Col>
                       <Col md={6}>
@@ -712,7 +745,7 @@ export default function VerifyUsers() {
                     <Form
                       onSubmit={(e) => {
                         e.preventDefault();
-                        searchStudents(stuQ);
+                        runStudentSearch(stuQ);
                       }}
                     >
                       <InputGroup className="mb-3">
@@ -924,11 +957,7 @@ export default function VerifyUsers() {
               title="Verify & Link to selected student"
             >
               {acting ? (
-                <Spinner
-                  size="sm"
-                  animation="border"
-                  className="me-2"
-                />
+                <Spinner size="sm" animation="border" className="me-2" />
               ) : (
                 <FaCheck className="me-1" />
               )}
@@ -977,11 +1006,7 @@ export default function VerifyUsers() {
             disabled={acting || !current}
           >
             {acting ? (
-              <Spinner
-                size="sm"
-                animation="border"
-                className="me-2"
-              />
+              <Spinner size="sm" animation="border" className="me-2" />
             ) : (
               <FaTimes className="me-1" />
             )}

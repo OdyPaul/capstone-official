@@ -9,8 +9,10 @@ const headers = () => {
   return { headers: { Authorization: `Bearer ${t}`, 'Content-Type': 'application/json' } };
 };
 
-const list = async () => {
-  const { data } = await axios.get(`${API_URL}/api/web/users`, headers());
+// 🔹 list now supports kind = 'web' | 'mobile' | 'all'
+const list = async (kind = 'web') => {
+  const qs = kind ? `?kind=${encodeURIComponent(kind)}` : '';
+  const { data } = await axios.get(`${API_URL}/api/web/users${qs}`, headers());
   return data; // array
 };
 
