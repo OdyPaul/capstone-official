@@ -10,7 +10,7 @@ import NotFound from './pages/NotFound';
 import Login from './pages/Login';
 import Loading from './Loading';
 import Index from './pages/landing_portal';
-import Verification from './pages/landing_portal/sub/verification_portal';
+import Verification from './pages/verification_portal';
 import Services from './pages/landing_portal/sub/services';
 import ResetPassword from './pages/ResetPassword';
 

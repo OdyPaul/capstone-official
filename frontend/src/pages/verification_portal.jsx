@@ -1,9 +1,9 @@
 // src/pages/web/verification/VerificationPortal.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
-import { API_URL as CONFIG_API_URL } from "../../../../config";
-import { renderTorFromPayload, downloadTorPdf } from "../../../lib/torRenderer";
-import { renderDiplomaFromPayload, downloadDiplomaPdf } from "../../../lib/diplomaRenderer";
+import { API_URL as CONFIG_API_URL } from "../../config";
+import { renderTorFromPayload, downloadTorPdf } from "../lib/torRenderer";
+import { renderDiplomaFromPayload, downloadDiplomaPdf } from "../lib/diplomaRenderer";
 
 // ✅ Import assets so bundler gives proper URLs in dev & build
 import torBg1 from "../../../assets/public/tor-page-1.png";

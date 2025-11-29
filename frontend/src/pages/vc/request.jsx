@@ -8,13 +8,10 @@ import {
   Spinner,
   Alert,
   Modal,
-  Form,              // ✅ added
 } from "react-bootstrap";
-import { FaSync, FaTrash } from "react-icons/fa";
-import { getAllRequests, deleteRequest } from "../../features/request/requestsSlice";
-import { NavLink } from "react-router-dom";
+import { FaSync, FaEye } from "react-icons/fa";
+import { getAllRequests } from "../../features/request/requestsSlice";
 
-// ✅ same style as IssuedVc
 const PAGE_SIZES = [10, 20, 50, 100];
 
 function Request() {
@@ -23,24 +20,17 @@ function Request() {
   const {
     items = [],
     isLoading = false,
-    isUpdating = false,
     isError = false,
     message = "",
   } = useSelector((s) => s.requests || {});
 
   const [statusFilter, setStatusFilter] = useState("all");
-
-  // pagination
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(20);
-
-  // confirm modal state (only for delete now)
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [targetRow, setTargetRow] = useState(null);
-  const closeConfirm = () => {
-    setShowConfirm(false);
-    setTargetRow(null);
-  };
+  const [showDetails, setShowDetails] = useState(false);
+  const [detailsRequest, setDetailsRequest] = useState(null);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
     dispatch(getAllRequests({}));
@@ -56,20 +46,6 @@ function Request() {
     return s.length > 8 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s || "—";
   };
 
-  const openDeleteConfirm = (row) => {
-    setTargetRow(row);
-    setShowConfirm(true);
-  };
-
-  const doDelete = async () => {
-    if (!targetRow?._id) return;
-    try {
-      await dispatch(deleteRequest(targetRow._id)).unwrap();
-    } finally {
-      closeConfirm();
-    }
-  };
-
   const statusVariant = (s) =>
     s === "pending"
       ? "warning"
@@ -81,7 +57,6 @@ function Request() {
       ? "info"
       : "secondary";
 
-  // ✅ pagination derived from filtered list
   const total = filtered.length;
   const pageCount = Math.max(
     1,
@@ -93,7 +68,6 @@ function Request() {
     return filtered.slice(start, start + limit);
   }, [filtered, page, limit]);
 
-  // ✅ clamp page when data/limit changes
   useEffect(() => {
     const pc = Math.max(
       1,
@@ -101,6 +75,26 @@ function Request() {
     );
     if (page > pc) setPage(pc);
   }, [total, limit, page]);
+
+  const openDetails = (request) => {
+    setDetailsRequest(request);
+    setShowDetails(true);
+  };
+
+  const closeDetails = () => {
+    setShowDetails(false);
+    setDetailsRequest(null);
+  };
+
+  const handleImageClick = (imageUrl) => {
+    setSelectedImage(imageUrl);
+    setShowImageModal(true);
+  };
+
+  const closeImageModal = () => {
+    setShowImageModal(false);
+    setSelectedImage(null);
+  };
 
   return (
     <section className="container py-4">
@@ -113,7 +107,7 @@ function Request() {
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value);
-              setPage(1); // ✅ reset to first page when filter changes
+              setPage(1); // reset to first page when filter changes
             }}
           >
             <option value="all">All statuses</option>
@@ -143,14 +137,9 @@ function Request() {
             <Table hover className="align-middle mb-0">
               <thead className="table-light">
                 <tr>
-                  <th>Created</th>
                   <th>Student ID</th>
-                  <th>Full Name</th>
                   <th>Program</th>
                   <th>Type</th>
-                  <th>Purpose</th>
-                  <th>Anchor now</th>
-                  <th>Draft</th>
                   <th>Status</th>
                   <th style={{ width: 140 }}>Actions</th>
                 </tr>
@@ -158,7 +147,7 @@ function Request() {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan={10} className="text-center py-5">
+                    <td colSpan={5} className="text-center py-5">
                       <Spinner animation="border" className="me-2" />
                       Loading…
                     </td>
@@ -167,38 +156,7 @@ function Request() {
                   pageRows.map((r) => (
                     <tr key={r._id}>
                       <td>
-                        {r.createdAt
-                          ? new Date(r.createdAt).toLocaleString()
-                          : "—"}
-                      </td>
-                      <td>
-                        {r.profileId ? (
-                          <NavLink
-                            to={`/students/${r.profileId}`}
-                            className="text-decoration-none"
-                          >
-                            {r.studentNumber || shortId(r.profileId)}
-                          </NavLink>
-                        ) : (
-                          <span className="text-muted">—</span>
-                        )}
-                      </td>
-                      <td className="d-flex align-items-center gap-2">
-                        {r.photoUrl ? (
-                          <img
-                            src={r.photoUrl}
-                            alt=""
-                            style={{
-                              width: 32,
-                              height: 32,
-                              objectFit: "cover",
-                              borderRadius: 6,
-                            }}
-                          />
-                        ) : (
-                          <div className="text-muted small">—</div>
-                        )}
-                        <span>{r.fullName || "—"}</span>
+                        {r.profileId ? shortId(r.profileId) : "—"}
                       </td>
                       <td>{r.program || "—"}</td>
                       <td>
@@ -206,56 +164,25 @@ function Request() {
                           {r.vcType || String(r.type || "").toUpperCase()}
                         </Badge>
                       </td>
-                      <td style={{ maxWidth: 260 }}>
-                        <span className="text-muted">
-                          {r.vcPurpose || r.purpose || "—"}
-                        </span>
-                      </td>
-
-                      {/* Anchor now */}
-                      <td>
-                        <Badge bg={r.anchorNow ? "info" : "secondary"}>
-                          {r.anchorNow ? "Yes" : "No"}
-                        </Badge>
-                      </td>
-
-                      {/* Draft info */}
-                      <td>
-                        {r.draft ? (
-                          <Badge bg="success" title={String(r.draft)}>
-                            Draft: {shortId(r.draft)}
-                          </Badge>
-                        ) : (
-                          <Badge bg="light" text="dark">
-                            None
-                          </Badge>
-                        )}
-                      </td>
-
                       <td>
                         <Badge bg={statusVariant(r.status || "pending")}>
                           {r.status || "pending"}
                         </Badge>
                       </td>
-
                       <td>
-                        <div className="d-flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline-secondary"
-                            disabled={isUpdating}
-                            onClick={() => openDeleteConfirm(r)}
-                            title="Delete request"
-                          >
-                            <FaTrash className="me-1" /> Trash
-                          </Button>
-                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline-primary"
+                          onClick={() => openDetails(r)}
+                        >
+                          <FaEye /> View
+                        </Button>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={10} className="text-center py-4">
+                    <td colSpan={5} className="text-center py-4">
                       No requests.
                     </td>
                   </tr>
@@ -264,124 +191,107 @@ function Request() {
             </Table>
           </div>
         </Card.Body>
-
-        {/* ✅ pagination footer copied from IssuedVc style */}
-        <Card.Footer className="d-flex align-items-center justify-content-between">
-          <div className="text-muted small">
-            Page {page} of {pageCount}
-            {total ? ` • Total ${total}` : ""}
-          </div>
-          <div className="d-flex gap-2">
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => setPage(1)}
-              disabled={page <= 1}
-            >
-              « First
-            </Button>
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-            >
-              ‹ Prev
-            </Button>
-            <Form.Select
-              size="sm"
-              style={{ width: 90 }}
-              value={limit}
-              onChange={(e) => {
-                setLimit(Number(e.target.value));
-                setPage(1);
-              }}
-            >
-              {PAGE_SIZES.map((n) => (
-                <option key={n} value={n}>
-                  {n}/page
-                </option>
-              ))}
-            </Form.Select>
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => setPage((p) => Math.min(pageCount, p + 1))}
-              disabled={page >= pageCount}
-            >
-              Next ›
-            </Button>
-            <Button
-              size="sm"
-              variant="outline-secondary"
-              onClick={() => setPage(pageCount)}
-              disabled={page >= pageCount}
-            >
-              Last »
-            </Button>
-          </div>
-        </Card.Footer>
       </Card>
 
-      {/* Delete confirm modal */}
-      <Modal show={showConfirm} onHide={closeConfirm} centered>
+      {/* Details Modal */}
+      <Modal show={showDetails} onHide={closeDetails} centered>
         <Modal.Header closeButton>
-          <Modal.Title>Delete Request</Modal.Title>
+          <Modal.Title>Request Details</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          {targetRow ? (
+          {detailsRequest ? (
             <>
+              {/* Profile Information */}
               <div className="mb-2">
-                <div className="text-muted small">Student</div>
+                <div className="text-muted small">Profile</div>
+                <div className="d-flex align-items-center gap-2">
+                  {detailsRequest.photoUrl ? (
+                    <img
+                      src={detailsRequest.photoUrl}
+                      alt="Profile"
+                      style={{
+                        width: 40,
+                        height: 40,
+                        objectFit: "cover",
+                        borderRadius: "50%",
+                        cursor: "pointer",
+                      }}
+                      onClick={() => handleImageClick(detailsRequest.photoUrl)} // Click to enlarge
+                    />
+                  ) : (
+                    <div className="text-muted small">—</div>
+                  )}
+                  <div>
+                    <div className="fw-semibold">{detailsRequest.fullName || "—"}</div>
+                    <div className="small text-muted">
+                      {detailsRequest.studentNumber || "—"}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Request Details */}
+              <div className="mb-2">
+                <div className="text-muted small">Student ID</div>
+                <div className="fw-semibold">{detailsRequest.profileId || "—"}</div>
+              </div>
+              <div className="mb-2">
+                <div className="text-muted small">Program</div>
+                <div className="fw-semibold">{detailsRequest.program || "—"}</div>
+              </div>
+              <div className="mb-2">
+                <div className="text-muted small">Type</div>
                 <div className="fw-semibold">
-                  {targetRow.fullName || "—"}
-                </div>
-                <div className="text-muted small">
-                  {(targetRow.studentNumber || "—")} •{" "}
-                  {(targetRow.program || "—")}
+                  {detailsRequest.vcType || String(detailsRequest.type || "").toUpperCase() || "—"}
                 </div>
               </div>
               <div className="mb-2">
-                <div className="text-muted small">Request</div>
-                <div>
-                  <strong>Type:</strong>{" "}
-                  {targetRow.vcType ||
-                    String(targetRow.type || "").toUpperCase() ||
-                    "—"}
-                </div>
-                <div>
-                  <strong>Purpose:</strong>{" "}
-                  {targetRow.vcPurpose || targetRow.purpose || "—"}
-                </div>
-                <div>
-                  <strong>Anchor now:</strong>{" "}
-                  {targetRow.anchorNow ? "Yes" : "No"}
-                </div>
-                <div>
-                  <strong>Draft:</strong>{" "}
-                  {targetRow.draft ? shortId(targetRow.draft) : "None"}
+                <div className="text-muted small">Purpose</div>
+                <div className="fw-semibold">{detailsRequest.vcPurpose || detailsRequest.purpose || "—"}</div>
+              </div>
+              <div className="mb-2">
+                <div className="text-muted small">Anchor now</div>
+                <div className="fw-semibold">
+                  {detailsRequest.anchorNow ? "Yes" : "No"}
                 </div>
               </div>
-              <hr />
-              <div>
-                This will permanently delete the request record. Drafts and
-                payments are managed separately. Continue?
+              <div className="mb-2">
+                <div className="text-muted small">Draft</div>
+                <div className="fw-semibold">
+                  {detailsRequest.draft ? shortId(detailsRequest.draft) : "None"}
+                </div>
               </div>
             </>
           ) : null}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="outline-secondary" onClick={closeConfirm}>
-            Cancel
-          </Button>
-          <Button
-            variant="secondary"
-            onClick={doDelete}
-            disabled={isUpdating || !targetRow}
-          >
-            Delete
+          <Button variant="outline-secondary" onClick={closeDetails}>
+            Close
           </Button>
         </Modal.Footer>
+      </Modal>
+
+      {/* Image Modal */}
+      <Modal
+        show={showImageModal}
+        onHide={closeImageModal}
+        centered
+        size="lg"
+        aria-labelledby="image-modal-label"
+      >
+        <Modal.Body
+          style={{
+            textAlign: "center",
+            backgroundColor: "black",
+          }}
+        >
+          <img
+            src={selectedImage}
+            alt="Enlarged profile"
+            style={{ maxWidth: "100%", maxHeight: "80vh", objectFit: "contain" }}
+            onClick={closeImageModal} // Close when clicked outside
+          />
+        </Modal.Body>
       </Modal>
     </section>
   );
