@@ -1,14 +1,25 @@
-// src/features/issuance/issueSlice.js
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
 import issueService from "./issueService";
 
-// 🔹 Issue credentials (batch)
+// 🔹 Issue credentials (batch, queued)
 export const issueCredentials = createAsyncThunk(
   "issue/issueCredentials",
-  async (payload, thunkAPI) => {
+  async (arg, thunkAPI) => {
     try {
       const token = thunkAPI.getState().auth.user.token;
-      const result = await issueService.issueCredentials(payload, token);
+
+      // Backwards-compatible: allow either payload OR { payload, onProgress }
+      let payload = arg;
+      let onProgress = undefined;
+
+      if (arg && typeof arg === "object" && arg.payload) {
+        payload = arg.payload;
+        onProgress = arg.onProgress;
+      }
+
+      const result = await issueService.issueCredentials(payload, token, {
+        onProgress,
+      });
       return result;
     } catch (err) {
       const message =

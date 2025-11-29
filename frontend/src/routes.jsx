@@ -10,7 +10,7 @@ import NotFound from './pages/NotFound';
 import Login from './pages/Login';
 import Loading from './Loading';
 import Index from './pages/landing_portal';
-import Verification from './pages/verification_portal';
+import VerificationPortal from './pages/verification_portal';
 import Services from './pages/landing_portal/sub/services';
 import ResetPassword from './pages/ResetPassword';
 
@@ -57,9 +57,9 @@ export default function AppRoutes() {
       <Route path="/landing-page" element={<Index />} />
       <Route path="/landing-page/services" element={<Services />} />
 
-      <Route path="/verification-portal" element={<Verification />} />
-      <Route path="/verification-portal/:sessionId" element={<Verification />} />
-      <Route path="/verify/:sessionId" element={<Verification />} />
+      <Route path="/verification-portal" element={<VerificationPortal />} />
+      <Route path="/verification-portal/:sessionId" element={<VerificationPortal />} />
+      <Route path="/verify/:sessionId" element={<VerificationPortal />} />
 
       <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />

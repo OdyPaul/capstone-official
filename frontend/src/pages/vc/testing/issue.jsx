@@ -25,9 +25,13 @@ import {
   FaSearch,
 } from "react-icons/fa";
 import * as XLSX from "xlsx";
-import { API_URL } from "../../../../config";
-import { issueCredentials as issueCredentialsThunk } from "../../../features/issuance/issueSlice";
-import { getPassingStudents, getStudentTor, getStudentById } from "../../../features/student/studentSlice";
+import { API_URL } from "../../config"; // ✅ fixed path
+import { issueCredentials as issueCredentialsThunk } from "../features/issuance/issueSlice"; // ✅ fixed path
+import {
+  getPassingStudents,
+  getStudentTor,
+  getStudentById,
+} from "../features/student/studentSlice"; // ✅ fixed path
 
 /* ----------------------------- helpers ----------------------------- */
 const normalizeType = (value = "") => {
@@ -101,16 +105,15 @@ function ImportSpreadsheetModal({
 
   // ---- mappers -----------------------------------------------------
 
-    const mapStudentRows = (rawStudents) =>
+  const mapStudentRows = (rawStudents) =>
     rawStudents.map((row) => {
-      const studentNumber =
-        String(
-          row.StudentNo ||
-            row.studentNumber ||
-            row.STUDENT_NO ||
-            row["Student No"] ||
-            ""
-        ).trim();
+      const studentNumber = String(
+        row.StudentNo ||
+          row.studentNumber ||
+          row.STUDENT_NO ||
+          row["Student No"] ||
+          ""
+      ).trim();
 
       const gradRaw =
         row.DateGraduated ||
@@ -176,17 +179,15 @@ function ImportSpreadsheetModal({
       };
     });
 
-
   const mapGradeRows = (rawGrades) =>
     rawGrades.map((row) => {
-      const studentNumber =
-        String(
-          row.StudentNo ||
-            row.studentNumber ||
-            row.STUDENT_NO ||
-            row["Student No"] ||
-            ""
-        ).trim();
+      const studentNumber = String(
+        row.StudentNo ||
+          row.studentNumber ||
+          row.STUDENT_NO ||
+          row["Student No"] ||
+          ""
+      ).trim();
 
       return {
         studentNumber,
@@ -687,31 +688,22 @@ function RecipientDetailsModal({ show, onHide, recipient }) {
             </Col>
             <Col md={6}>
               <Form.Label>Date admitted</Form.Label>
-              <Form.Control value={s.dateAdmission || s.dateAdmitted || ""} readOnly />
-            </Col>
-             <Col md={6}>
-              <Form.Label>Date admitted</Form.Label>
               <Form.Control
-                value={s.dateAdmission || s.dateAdmitted || ""}
+                value={toDateOnly(s.dateAdmission || s.dateAdmitted || "")}
                 readOnly
               />
             </Col>
             <Col md={6}>
               <Form.Label>Date graduated</Form.Label>
               <Form.Control
-                value={recipient.dateGraduated || s.dateGraduated || ""}
+                value={toDateOnly(recipient.dateGraduated || s.dateGraduated || "")}
                 readOnly
               />
             </Col>
-         
             <Col md={6}>
               <Form.Label>Date of birth</Form.Label>
-              <Form.Control
-                value={toDateOnly(s.dateOfBirth || "")}
-                readOnly  
-              />
+              <Form.Control value={toDateOnly(s.dateOfBirth || "")} readOnly />
             </Col>
-
             <Col md={6}>
               <Form.Label>Major</Form.Label>
               <Form.Control value={s.major || ""} readOnly />
@@ -1159,7 +1151,9 @@ function AddFromRegistryModal({ show, onHide, onAdd }) {
                 <nav aria-label="Page navigation">
                   <ul className="pagination mb-0">
                     <li
-                      className={`page-item ${currentPage === 1 ? "disabled" : ""}`}
+                      className={`page-item ${
+                        currentPage === 1 ? "disabled" : ""
+                      }`}
                     >
                       <button
                         className="page-link"
@@ -1171,7 +1165,9 @@ function AddFromRegistryModal({ show, onHide, onAdd }) {
                     {Array.from({ length: totalPages }, (_, i) => (
                       <li
                         key={i + 1}
-                        className={`page-item ${currentPage === i + 1 ? "active" : ""}`}
+                        className={`page-item ${
+                          currentPage === i + 1 ? "active" : ""
+                        }`}
                       >
                         <button
                           className="page-link"
@@ -1182,7 +1178,9 @@ function AddFromRegistryModal({ show, onHide, onAdd }) {
                       </li>
                     ))}
                     <li
-                      className={`page-item ${currentPage === totalPages ? "disabled" : ""}`}
+                      className={`page-item ${
+                        currentPage === totalPages ? "disabled" : ""
+                      }`}
                     >
                       <button
                         className="page-link"
@@ -1270,7 +1268,8 @@ function AddFromRegistryModal({ show, onHide, onAdd }) {
                     placeholder="Type year, e.g. 2023"
                     value={yearCustomPending}
                     onChange={(e) =>
-                      setYearCustomPending(e.target.value.replace(/[^\d]/g, ""))
+                      setYearCustomPending(e.target.value.replace(/[^\d]/g, "")
+                      )
                     }
                   />
                   <Form.Text className="text-muted">
@@ -1290,11 +1289,7 @@ function AddFromRegistryModal({ show, onHide, onAdd }) {
           >
             Close
           </Button>
-          <Button
-            variant="primary"
-            type="button"
-            onClick={applyModalFilters}
-          >
+          <Button variant="primary" type="button" onClick={applyModalFilters}>
             Apply
           </Button>
         </Modal.Footer>
@@ -1575,12 +1570,8 @@ export default function IssueCredentials() {
         program: r.program || "",
         dateGraduated: r.dateGraduated || "",
         // ✅ NEW: send DOB if we have it
-        dateOfBirth:
-          r.dateOfBirth ||
-          r.studentData?.dateOfBirth ||
-          "",
+        dateOfBirth: r.dateOfBirth || r.studentData?.dateOfBirth || "",
       }));
-
 
     if (!recipientsPayload.length) {
       alert("All recipients are missing student numbers.");
@@ -1816,7 +1807,7 @@ export default function IssueCredentials() {
                           <Form.Control
                             size="sm"
                             type="date"
-                            value={r.dateGraduated || ""}
+                            value={toDateOnly(r.dateGraduated) || ""}
                             onChange={(e) =>
                               handleChangeRecipientField(
                                 r.tempId,
@@ -1826,7 +1817,7 @@ export default function IssueCredentials() {
                             }
                           />
                         ) : (
-                          <span>{r.dateGraduated || "—"}</span>
+                          <span>{toDateOnly(r.dateGraduated) || "—"}</span>
                         )}
                       </td>
                       <td>
