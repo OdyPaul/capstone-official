@@ -6,10 +6,10 @@ import { renderTorFromPayload, downloadTorPdf } from "../lib/torRenderer";
 import { renderDiplomaFromPayload, downloadDiplomaPdf } from "../lib/diplomaRenderer";
 
 // ✅ Import assets so bundler gives proper URLs in dev & build
-import torBg1 from "../../../assets/public/tor-page-1.png";
-import torBg2 from "../../../assets/public/tor-page-2.png";
+import torBg1 from "../assets/public/tor-page-1.png";
+import torBg2 from "../assets/public/tor-page-2.png";
 // ⬇️ logo (same image as in IssuerProfile)
-import psauLogo from "../../../assets/psau_logo.png";
+import psauLogo from "../assets/psau_logo.png";
 
 /** Resolve API base (origin only; no trailing slash; no `/api`) */
 const stripBase = (u = "") => String(u).trim().replace(/\/+$/, "").replace(/\/api$/, "");
