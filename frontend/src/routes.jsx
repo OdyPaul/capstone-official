@@ -1,9 +1,9 @@
-// src/routes.jsx
+//routes.jsx
 import { Routes, Route } from 'react-router-dom';
 
 // Shell
 import Layout from './components/layouts/Layout';
-import CashierLayout from './components/layouts/CashierLayout';   // 🔹 new
+import CashierLayout from './components/layouts/CashierLayout';   
 import NotFound from './pages/NotFound';
 
 // Auth / Public
@@ -14,7 +14,7 @@ import VerificationPortal from './pages/verification_portal';
 import Services from './pages/landing_portal/sub/services';
 import ResetPassword from './pages/ResetPassword';
 
-// App pages (admin shell)
+// App pages 
 import Dashboard from './pages/Dashboard';
 import AccountsAdminStaff from './pages/accounts/ManageAccounts';
 import VerifyUsers from './pages/accounts/VerifyUsers';
@@ -42,7 +42,7 @@ import Profile from './pages/accounts/Profile';
 import Anchor  from './pages/registry/anchor';
 import Anchored from './pages/registry/anchored';
 
-// 🔹 cashier-issued list page (new, see section 7)
+//  cashier 
 import CashierIssued from './pages/cashier/issued';
 import CashierDrafts from './pages/cashier/cashierDrafts';
 
@@ -69,7 +69,7 @@ export default function AppRoutes() {
 
 
 
-      {/* Admin / staff shell */}
+      {/* Admin / staff */}
       <Route element={<Layout />}>
         {/* Home */}
         <Route index element={<Dashboard />} />
@@ -97,7 +97,7 @@ export default function AppRoutes() {
         <Route path="vc/sub/transactions" element={<Transactions />} />
         <Route path="issuance/payments" element={<PaymentConfirmation />} />
 
-        {/* Registry / Utilities */}
+        {/* Registry*/}
         <Route path="registry/issuedVc" element={<IssuedVc />} />
         <Route path="registry/anchor" element={<Anchor />} />
         <Route path="registry/anchored" element={<Anchored />} />
@@ -107,7 +107,7 @@ export default function AppRoutes() {
         <Route path="about" element={<About />} />
       </Route>
 
-      {/* 🔹 Cashier shell (only Drafts + Issued) */}
+      {/*  Cashier */}
       <Route element={<CashierLayout />}>
         <Route path="cashier/drafts" element={<CashierDrafts />} />
         <Route path="cashier/issued" element={<CashierIssued />} />

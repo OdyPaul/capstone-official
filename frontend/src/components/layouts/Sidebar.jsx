@@ -37,14 +37,10 @@ function Sidebar() {
     vcIssue: 0,
     accounts: 0,
   });
-
   const toggleSidebar = () => setCollapsed((c) => !c);
-
-  // convenience flag: only superadmin + developer
   const isDevOrSuper =
     user?.role === "developer" || user?.role === "superadmin";
 
-  // Map route -> label (for tooltips)
   const routeLabel = useMemo(
     () => ({
       "/": "Dashboard",
@@ -68,7 +64,7 @@ function Sidebar() {
     [user?._id]
   );
 
-  // submenu routes (collapsed mode cycles through these)
+ 
   const submenuRoutes = useMemo(
     () => ({
       vcIssue: ["/vc/issue", "/vc/request", "/vc/draft"],
